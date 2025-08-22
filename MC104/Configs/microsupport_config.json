@@ -1,0 +1,15 @@
+{
+  "Resolutions": {
+    "axisX": 0.05,
+    "axisY": 0.05,
+    "axisZ": 0.05
+  },
+  "Params": {
+    "maxControllers": 4,
+    "iconSizeU": 80,
+    "iconSizeV": 100,
+    "spacing": 10,
+    "startX": 10,
+    "startY": 100
+  }
+}

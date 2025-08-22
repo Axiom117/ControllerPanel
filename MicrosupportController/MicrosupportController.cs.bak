@@ -1,0 +1,698 @@
+﻿///
+/// Copyright (c) 2016, Micro Support Co.,Ltd.
+/// Web: http://www.microsupport.co.jp/
+///
+/// MotionController Class
+/// 
+///----------------------------------------------------------------------------
+///	history
+/// 
+/// version 1.0.0.0     2017/03/24
+///                     New creation.
+///                     Autherd by Seki,Tomomasa
+///----------------------------------------------------------------------------
+
+using System;
+using HpmcstdCs;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace MicrosupportController
+{
+    /// <summary>
+    /// MC104 モーション・コントローラを制御するクラスです。
+    /// </summary>
+    public class Microsupport
+    {
+        private static object instanceLock = new object();
+        private static Microsupport mInstance = null;
+        public static Microsupport Instance
+        {
+            get
+            {
+                lock (instanceLock)
+                {
+                    if (mInstance == null)
+                        mInstance = new Microsupport();
+
+                    return mInstance;
+                }
+            }
+        }
+
+        #region クラスの定数・列挙子・内部クラス
+
+        /// <summary>
+        /// 最大接続軸数です。
+        /// </summary>
+        public const int MC104_MAX_AXES = 4;
+
+        /// <summary>
+        /// 軸名称です。
+        /// </summary>
+        public const ushort MC104_AXIS1 = 0;
+        public const ushort MC104_AXIS2 = 1;
+        public const ushort MC104_AXIS3 = 2;
+        public const ushort MC104_AXIS4 = 3;
+
+        /// <summary>
+        /// ドライブモードです。
+        /// </summary>
+        public const ushort MC104_INDEX_FORWARD = 0; // INC
+        public const ushort MC104_INDEX_REVERSE = 1;
+        public const ushort MC104_SCAN_FORWARD = 2; // JOG?
+        public const ushort MC104_SCAN_REVERSE = 3;
+
+        /// <summary>
+        /// 原点復帰パターンです。
+        /// </summary>
+        public const ushort MC104_ORG_0 = 0; // ユーザー定義原点復帰モード
+        public const ushort MC104_ORG_1 = 1; // 原点信号の－側エッジ検出
+        public const ushort MC104_ORG_2 = 2; // 原点信号の－側エッジ検出後、Z相＋側立ち上がりエッジ検出
+        public const ushort MC104_ORG_3 = 3; // －リミット信号のエッジ検出
+        public const ushort MC104_ORG_4 = 4; // ＋リミット信号のエッジ検出
+        public const ushort MC104_ORG_5 = 5; // －リミット信号のエッジ検出後、Z相＋側立ち上がりエッジ検出
+        public const ushort MC104_ORG_6 = 6; // ＋リミット信号のエッジ検出後、Z相－側立ち上がりエッジ検出
+        public const ushort MC104_ORG_7 = 7; // －Z相エッジ検出
+        public const ushort MC104_ORG_8 = 8; // 原点信号の＋側エッジ検出
+        public const ushort MC104_ORG_9 = 9; // 原点信号の＋側エッジ検出後、Z相－側立ち上がりエッジ検出
+        #endregion
+
+        /// <summary>
+        /// 各軸の分解能(um/pulse)です。
+        /// </summary>
+        private const double RESOLUTIONS_AXIS_X = 0.05;
+        private const double RESOLUTIONS_AXIS_Y = 0.05;
+        private const double RESOLUTIONS_AXIS_Z = 0.05;
+
+        public enum AXIS
+        {
+            X,
+            Y,
+            Z,
+        }
+
+        public enum DIRECTION
+        {
+            FORWARD,
+            REVERSE
+        }
+
+        /// <summary>
+        /// 最高速度(pulse/sec)です。
+        /// </summary>
+        private const int MAX_SPEED = 50000;        // X軸, Y軸, Z軸
+        private const double MAX_UM_SPEED = MAX_SPEED * RESOLUTIONS_AXIS_X;        // X軸, Y軸, Z軸
+        private const double SPEED_DEFAULT = 1000;
+        private double safeZPos = 0;
+        public double SafeZPos { get { return safeZPos; } set { safeZPos = value; } }
+
+        // These are latest set speeds and not actual speeds, encoder
+        private double[] speedXYZ = new double[3];
+        public double[] SpeedXYZ { get { return speedXYZ; } }
+
+        public Microsupport()
+        {
+            Initialize();
+        }
+
+        public void StartOrigin()
+        {
+            // Homing
+            SetSpeed(AXIS.X, MAX_UM_SPEED);
+            SetSpeed(AXIS.Y, MAX_UM_SPEED);
+            SetSpeed(AXIS.Z, MAX_UM_SPEED);
+
+            StartOrigin(MC104_AXIS1, MC104_ORG_3);
+            StartOrigin(MC104_AXIS2, MC104_ORG_3);
+            StartOrigin(MC104_AXIS3, MC104_ORG_3);
+
+            while (IsBusy())
+                Thread.Sleep(100);
+        }
+
+        public async Task Move2Reservoir()
+        {
+            int X = 2000;
+            int Y = 4000;
+            int Z = 7000;
+
+            SetSpeedAll(SPEED_DEFAULT);
+            MoveXYZ(X, Y, Z);
+        }
+
+        public async Task Move2Measurement()
+        {
+            int X = 10000;
+            int Y = 1500;
+            int Z = 6000;
+
+            SetSpeedAll(SPEED_DEFAULT);
+            await MoveXYZSafe(X, Y, Z);
+        }
+
+        public async Task Wait()
+        {
+            while (IsBusy())
+                await Task.Delay(10);
+        }
+
+        #region クラスのプロパティ・変数
+
+        /// <summary>
+        /// モーション・コントローラのハンドル です。
+        /// </summary>
+        private uint hController = 0xFFFFFFFF;
+
+        /// <summary>
+        /// モーション・コントローラの有効・無効を返します。
+        /// </summary>
+        public bool IsValid
+        {
+            get { return (hController != 0xFFFFFFFF) ? true : false; }
+        }
+
+        #endregion
+
+
+        #region クラスの公開メソッド
+
+        /// <summary>
+        /// モーション・コントローラの初期化処理を行います。
+        /// </summary>
+        public void Initialize()
+        {
+            hController = Hpmcstd.McsdOpen("MCUSB4sd", 1);  // ID=1 のモーション・コントローラをオープン
+            if (this.IsValid)
+            {
+                int err = 0;
+                for (ushort i = 0; i < MC104_MAX_AXES; i++)
+                {
+                    // パルス出力方式	2 パルス方式
+                    // DIR   出力端子 	CWパルス  アクティブ High
+                    // PULSE 出力端子	CCWパルス アクティブ High
+                    err = (int)Hpmcstd.McsdSetPulseMode(hController, i, 4);
+
+                    // +LMT		  入力信号アクティブレベル	High
+                    // -LMT		  入力信号アクティブレベル	High
+                    // ALARM	  入力信号アクティブレベル	High
+                    // INPOSITION 入力信号アクティブレベル	High
+                    err = (int)Hpmcstd.McsdSetLimit(hController, i, 0x00);
+
+                    // アラーム信号       無効
+                    // 位置決め完了信号   無効
+                    // リミット信号検出時 急停止
+                    err = (int)Hpmcstd.McsdSetSignalStop(hController, i, 0, 0, 2);
+                }
+            }
+        }
+
+        /// <summary>
+        /// モーション・コントローラの終了処理を行います。
+        /// </summary>
+        public void Terminate()
+        {
+            if (this.IsValid)
+                Hpmcstd.McsdClose(hController);
+        }
+
+        public int Enc2um( AXIS axis, double enc)
+        {
+            switch (axis)
+            {
+                case AXIS.X:
+                    return (int)(enc * RESOLUTIONS_AXIS_X);
+                case AXIS.Y:
+                    return (int)(enc * RESOLUTIONS_AXIS_Y);
+                case AXIS.Z:
+                    return (int)(enc * RESOLUTIONS_AXIS_Z);
+                default:
+                    return 0;
+            }
+        }
+        public int Um2enc(AXIS axis, double um)
+        {
+            switch (axis)
+            {
+                case AXIS.X:
+                    return (int)(um / RESOLUTIONS_AXIS_X);
+                case AXIS.Y:
+                    return (int)(um / RESOLUTIONS_AXIS_Y);
+                case AXIS.Z:
+                    return (int)(um / RESOLUTIONS_AXIS_Z);
+                default:
+                    return 0;
+            }
+        }
+
+        /// <summary>
+        /// 各軸の現在位置(pulse)を取得します。
+        /// </summary>
+        /// <return>ポジション(pulse)</return>
+        public int[] GetPositionsEnc()
+        {
+            int[] pos = null;
+
+            if (this.IsValid)
+            {
+                pos = new int[MC104_MAX_AXES];
+                for (ushort i = 0; i < MC104_MAX_AXES; i++)
+                {
+                    uint dwData;
+                    uint err = Hpmcstd.McsdGetCounter(hController, i, 0, out dwData);
+                    // 内部カウンタは 28 ビットなので符号拡張します。
+                    if ((dwData & 0x08000000) == 0x08000000)
+                        dwData |= 0xF0000000;
+                    pos[i] = (int)dwData;
+                }
+            }
+
+            return pos;
+        }
+
+        /// <summary>
+        /// 各軸の現在位置(um)を取得します。
+        /// </summary>
+        /// <return>ポジション(um)</return>
+        public double[] GetPositions()
+        {
+            double[] posum = null;
+            int[] pos = GetPositionsEnc();
+            if( pos != null )
+            {
+                posum = new double[3];
+                posum[0] = pos[0] * RESOLUTIONS_AXIS_X;
+                posum[1] = pos[1] * RESOLUTIONS_AXIS_Y;
+                posum[2] = pos[2] * RESOLUTIONS_AXIS_Z;
+            }    
+            return posum;
+        }
+
+        /// <summary>
+        /// 現在位置(pulse)を取得します。
+        /// </summary>
+        /// <return>ポジション(pulse)</return>
+        public int GetPositionEnc(AXIS axis)
+        {
+            int[] pos = GetPositionsEnc();
+            switch (axis)
+            {
+                case AXIS.X:
+                    return pos[0];
+                case AXIS.Y:
+                    return pos[1];  
+                case AXIS.Z:
+                    return pos[2];
+                default:
+                    return 0;
+            }
+        }
+
+        /// <summary>
+        /// 現在位置(um)を取得します。
+        /// </summary>
+        /// <return>ポジション(um)</return>
+        public double GetPosition(AXIS axis)
+        {
+            int pos = GetPositionEnc(axis);
+            return Enc2um(axis, pos);
+        }
+
+        /// <summary>
+        /// 駆動速度を設定します。
+        /// </summary>
+        /// <param name="axis">軸番号</param>
+        /// <param name="speed">駆動速度</param>
+        public uint SetSpeedEnc(AXIS axis, int speed)
+        {
+            if (this.IsValid)
+            {
+                Hpmcstd.MCSDSPDDATA speedData = new Hpmcstd.MCSDSPDDATA();
+
+                // 自起動速度	100PPS
+                // 最高速度 	speeds[] PPS
+                // 加速時間 	100msec
+                // Ｓ字加減率	0%（直線加減速）
+                int range = (speed > 81910) ? 10 : 100;
+                int irange = (speed > 81910) ? 100 : 10;
+
+                speedData.dwMode = 0;
+                speedData.dwRange = (uint)range;
+                speedData.dwHighSpeed = (uint)Math.Abs(speed / irange);
+                speedData.dwLowSpeed = (uint)Math.Abs(500 / irange);
+                speedData.dwRate = new uint[] { 80, 8191, 8191 };
+                speedData.dwRateChgPnt = new uint[] { 8191, 8191 };     // 台形ドライブ
+                speedData.dwScw = new uint[] { 4095, 4095 };
+                speedData.dwRearPulse = 0;
+
+                // 速度設定を確実に実行するための処理　(最低速度=自起動速度) //
+                if (speedData.dwHighSpeed < speedData.dwLowSpeed)
+                    speedData.dwHighSpeed = speedData.dwLowSpeed;
+
+                switch (axis)
+                {
+                    case AXIS.X:
+                        speedXYZ[0] = speed;
+                        return Hpmcstd.McsdSetSpeed(hController, MC104_AXIS1, ref speedData);
+                    case AXIS.Y:
+                        speedXYZ[1] = speed;
+                        return Hpmcstd.McsdSetSpeed(hController, MC104_AXIS2, ref speedData);
+                    case AXIS.Z:
+                        speedXYZ[2] = speed;
+                        return Hpmcstd.McsdSetSpeed(hController, MC104_AXIS3, ref speedData);
+                    default:
+                        return Hpmcstd.MCSD_ERROR_AXIS;
+                }                
+            }
+
+            return Hpmcstd.MCSD_ERROR_NO_DEVICE;
+        }
+
+        /// <summary>
+        /// 駆動速度を設定します。
+        /// </summary>
+        /// <param name="axis">軸番号</param>
+        /// <param name="speed um">駆動速度</param>
+        public uint SetSpeed(AXIS axis, double speed)
+        {
+            return SetSpeedEnc(axis, Um2enc(axis, speed));
+        }
+
+        /// <summary>
+        /// 駆動速度を設定します。
+        /// </summary>
+        /// <param name="all axis">軸番号</param>
+        /// <param name="speed um">駆動速度</param>
+        public uint SetSpeedAll(double speed)
+        {
+            uint ret1 = SetSpeedEnc(AXIS.X, Um2enc(AXIS.X, speed));
+            uint ret2 = SetSpeedEnc(AXIS.Y, Um2enc(AXIS.Y, speed));
+            uint ret3 = SetSpeedEnc(AXIS.Z, Um2enc(AXIS.Z, speed));
+            if (ret1 != Hpmcstd.MCSD_ERROR_SUCCESS)
+                return ret1;
+            if (ret2 != Hpmcstd.MCSD_ERROR_SUCCESS)
+                return ret2;
+            return ret3;
+        }
+
+        /// <summary>
+        /// 指定された軸の減速停止します。
+        /// </summary>
+        /// <param name="axis">軸番号</param>
+        public uint StopAxis(ushort axis)
+        {
+            if (this.IsValid)
+            {
+                return Hpmcstd.McsdDriveStop(hController, axis, 0); // 減速停止
+            }
+            return Hpmcstd.MCSD_ERROR_NO_DEVICE;
+        }
+
+        public uint Stop()
+        {
+            uint ret1 = StopAxis(AXIS.X);
+            uint ret2 = StopAxis(AXIS.Y);
+            uint ret3 = StopAxis(AXIS.Z);
+            if (ret1 != Hpmcstd.MCSD_ERROR_SUCCESS)
+                return ret1;
+            if (ret2 != Hpmcstd.MCSD_ERROR_SUCCESS)
+                return ret2;
+            return ret3;
+        }
+        
+        public uint StopEmergency()
+        {
+            uint ret1 = StopAxisEmergency(AXIS.X);
+            uint ret2 = StopAxisEmergency(AXIS.Y);
+            uint ret3 = StopAxisEmergency(AXIS.Z);
+            if (ret1 != Hpmcstd.MCSD_ERROR_SUCCESS)
+                return ret1;
+            if (ret2 != Hpmcstd.MCSD_ERROR_SUCCESS)
+                return ret2;
+            return ret3;
+        }
+
+        public uint StopAxis(AXIS axis)
+        {
+            if (this.IsValid)
+            {
+                switch (axis)
+                {
+                    case AXIS.X:
+                        return Hpmcstd.McsdDriveStop(hController, MC104_AXIS1, 0); // 減速停止
+                    case AXIS.Y:
+                        return Hpmcstd.McsdDriveStop(hController, MC104_AXIS2, 0); // 減速停止
+                    case AXIS.Z:
+                        return Hpmcstd.McsdDriveStop(hController, MC104_AXIS3, 0); // 減速停止
+                    default:
+                        return Hpmcstd.MCSD_ERROR_AXIS;
+                }
+            }
+            return Hpmcstd.MCSD_ERROR_NO_DEVICE;
+        }
+
+        public uint StopAxisEmergency(AXIS axis)
+        {
+            if (this.IsValid)
+            {
+                switch (axis)
+                {
+                    case AXIS.X:
+                        return Hpmcstd.McsdDriveStop(hController, MC104_AXIS1, 1); // 減速停止
+                    case AXIS.Y:
+                        return Hpmcstd.McsdDriveStop(hController, MC104_AXIS2, 1); // 減速停止
+                    case AXIS.Z:
+                        return Hpmcstd.McsdDriveStop(hController, MC104_AXIS3, 1); // 減速停止
+                    default:
+                        return Hpmcstd.MCSD_ERROR_AXIS;
+                }
+            }
+            return Hpmcstd.MCSD_ERROR_NO_DEVICE;
+        }
+
+        /// <summary>
+        /// 指定された軸のジョグ駆動開始します。
+        /// </summary>
+        /// <param name="axis">軸番号</param>
+        /// <param name="dir">駆動方向</param>
+        public uint StartJog(AXIS axis, DIRECTION dir)
+        {
+            if (this.IsValid)
+            {
+                ushort _axis = 0;
+                ushort _dir;
+                switch (axis)
+                {
+                    case AXIS.X:
+                        _axis = MC104_AXIS1;
+                        break;
+                    case AXIS.Y:
+                        _axis = MC104_AXIS2;
+                        break;
+                    case AXIS.Z:
+                        _axis = MC104_AXIS3;
+                        break;
+                }
+
+                if (dir == DIRECTION.FORWARD)
+                    _dir = MC104_SCAN_FORWARD;
+                else
+                    _dir = MC104_SCAN_REVERSE;
+                
+                return Hpmcstd.McsdDriveStart(hController, _axis, _dir, 0xFFFFFF);
+            }
+            return Hpmcstd.MCSD_ERROR_NO_DEVICE;
+        }
+
+        /// <summary>
+        /// 指定された軸のジョグ駆動開始します。
+        /// </summary>
+        /// <param name="axis">軸番号</param>
+        /// <param name="dir">駆動方向</param>
+        /// <param name="distance">移動量</param>
+        public uint StartIncEnc(AXIS axis, DIRECTION dir, uint distance)
+        {
+            if (this.IsValid)
+            {
+                ushort _axis = 0;
+                ushort _dir;
+                switch (axis)
+                {
+                    case AXIS.X:
+                        _axis = MC104_AXIS1;
+                        break;
+                    case AXIS.Y:
+                        _axis = MC104_AXIS2;
+                        break;
+                    case AXIS.Z:
+                        _axis = MC104_AXIS3;
+                        break;
+                }
+
+                if (dir == DIRECTION.FORWARD)
+                    _dir = MC104_INDEX_FORWARD;
+                else
+                    _dir = MC104_INDEX_REVERSE;
+
+                return Hpmcstd.McsdDriveStart(hController, _axis, _dir, distance);
+            }
+            return Hpmcstd.MCSD_ERROR_NO_DEVICE;
+        }
+
+        public uint StartInc(AXIS axis, DIRECTION dir, double umdistance)
+        {
+            uint distance = (uint)Um2enc(axis, umdistance);
+            return StartIncEnc(axis, dir, distance);
+        }
+        /// <summary>
+        /// 指定された軸の絶対位置駆動開始します。
+        /// </summary>
+        /// <param name="axis">軸番号</param>
+        /// <param name="position">移動位置</param>
+        public uint StartAbsEnc(AXIS axis, int position)
+        {
+            if (this.IsValid)
+            {
+                ushort _axis = 0;
+                switch (axis)
+                {
+                    case AXIS.X:
+                        _axis = MC104_AXIS1;
+                        break;
+                    case AXIS.Y:
+                        _axis = MC104_AXIS2;
+                        break;
+                    case AXIS.Z:
+                        _axis = MC104_AXIS3;
+                        break;
+                }
+
+                int now = GetPositionEnc(axis);
+                int distance = position - now;
+                ushort dir = (Math.Sign(distance) == -1) ? MC104_INDEX_REVERSE : MC104_INDEX_FORWARD;
+                return Hpmcstd.McsdDriveStart(hController, _axis, dir, (uint)Math.Abs(distance));
+            }
+            return Hpmcstd.MCSD_ERROR_NO_DEVICE;
+        }
+
+        public uint StartAbs(AXIS axis, double position)
+        {
+            int posEnc = Um2enc(axis, position);
+            return StartAbsEnc(axis, posEnc);
+        }
+
+        // Moves with a max speed of choice or default speed. 
+        // Speeds are not set back, manual setting is required after.
+        public void MoveXYZLine(double posX, double posY, double posZ, double speed = SPEED_DEFAULT)
+        {
+            double nowX = GetPosition(AXIS.X);
+            double distanceX = posX - nowX;
+            double timeX = distanceX / speed;
+
+            double nowY = GetPosition(AXIS.Y);
+            double distanceY = posY - nowY;
+            double timeY = distanceY / speed;
+
+            double nowZ = GetPosition(AXIS.Z);
+            double distanceZ = posZ - nowZ;
+            double timeZ = distanceZ / speed;
+
+            double maxTime = Math.Max(timeX, Math.Max(timeY, timeZ));
+            if (distanceX > 0)
+                SetSpeed(AXIS.X, (int)(distanceX / maxTime));
+            if (distanceY > 0)
+                SetSpeed(AXIS.Y, (int)(distanceY / maxTime));
+            if (distanceZ > 0)
+                SetSpeed(AXIS.Z, (int)(distanceZ / maxTime));
+
+            MoveXYZ(posX, posY, posZ);
+        }
+
+        // Sets speed for each axis so it would move in a linear line
+        // After reaching goal speed settings are reverted
+        public async void MoveXYZLineWait(double posX, double posY, double posZ)
+        {
+            double nowX = GetPosition(AXIS.X);
+            double distanceX = posX - nowX;
+            double speedX = speedXYZ[0] * RESOLUTIONS_AXIS_X;
+            double timeX = distanceX / speedX;
+
+            double nowY = GetPosition(AXIS.Y);
+            double distanceY = posY - nowY;
+            double speedY = speedXYZ[1] * RESOLUTIONS_AXIS_X;
+            double timeY = distanceY / speedY;
+
+            double nowZ = GetPosition(AXIS.Z);
+            double distanceZ = posZ - nowZ;
+            double speedZ = speedXYZ[2] * RESOLUTIONS_AXIS_X;
+            double timeZ = distanceZ / speedZ;
+
+            double maxTime = Math.Max(timeX, Math.Max(timeY, timeZ));
+            if (distanceX > 0)
+                SetSpeed(AXIS.X, (int)(distanceX / maxTime));
+            if (distanceY > 0)
+                SetSpeed(AXIS.Y, (int)(distanceY / maxTime));
+            if (distanceZ > 0)
+                SetSpeed(AXIS.Z, (int)(distanceZ / maxTime));
+
+            await MoveXYZWait(posX, posY, posZ);
+            SetSpeed(AXIS.X, speedX);
+            SetSpeed(AXIS.Y, speedY);
+            SetSpeed(AXIS.Z, speedZ);
+        }
+
+        public void MoveXYZ(double posX, double posY, double posZ)
+        {
+            _ = StartAbs(AXIS.X, posX);
+            _ = StartAbs(AXIS.Y, posY);
+            _ = StartAbs(AXIS.Z, posZ);   
+        }
+        public async Task MoveXYZWait(double posX, double posY, double posZ)
+        {
+            MoveXYZ(posX, posY, posZ);
+            await Wait();
+        }
+        public async Task MoveXYZSafe(double posX, double posY, double posZ)
+        {
+            _ = StartAbs(AXIS.Z, safeZPos);
+            await Wait();
+            _ = StartAbs(AXIS.X, posX);
+            _ = StartAbs(AXIS.Y, posY);
+            await Wait();
+            _ = StartAbs(AXIS.Z, posZ);
+            await Wait();
+        }
+
+        /// <summary>
+        /// 指定された軸の原点復帰を開始します。
+        /// </summary>
+        /// <param name="axis">軸番号</param>
+        public uint StartOrigin(ushort axis, ushort action)
+        {
+            if (this.IsValid)
+            {
+                return Hpmcstd.McsdOrgReturn(hController, axis, action);
+            }
+            return Hpmcstd.MCSD_ERROR_NO_DEVICE;
+        }
+
+        public bool IsBusy()
+        {
+            ushort status;
+            Hpmcstd.McsdGetAxisBusy(hController, out status);
+
+            return (status != 0);
+        }
+        public ushort GetStatus()
+        {
+            ushort status;
+            Hpmcstd.McsdGetAxisBusy(hController, out status);
+
+            return status;
+        }
+
+        #endregion
+
+    }
+
+}

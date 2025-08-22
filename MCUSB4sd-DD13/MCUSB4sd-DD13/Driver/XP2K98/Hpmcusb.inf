@@ -1,0 +1,145 @@
+; Hpmcusb.inf
+;
+; Installation file (.inf) for the HPMCUSB device.
+;
+; (c) Copyright 2009 HI-P Tech Corporation 
+;
+[Version]
+Signature="$Chicago$"
+Provider=%HIPTech%
+ClassGUID={F07F352F-BF61-42c0-A1DB-6FA69D05A936}
+Class=HIP-MCUSB
+DriverVer=06/15/2009
+
+[ClassInstall]
+AddReg=AddClassNameAndIcon
+
+[ClassInstall32]
+AddReg=AddClassNameAndIcon
+
+[AddClassNameAndIcon]
+HKR,,,,%HipMcusbClassName%
+HKR,,Icon,,-20
+
+[DestinationDirs]
+dev.copy = 11
+DllFiles = 11
+DefaultDestDir = 12
+
+;
+; Driver information
+;
+[Manufacturer]
+%HIPTech% = HIPTech.Mfg
+
+[HIPTech.Mfg]
+%HIPTech.DeviceDesc0% = MCUSB4SD, USB\VID_1225&PID_1000
+%HIPTech.DeviceDesc1% = MCUSB2EC, USB\VID_1225&PID_1004
+%HIPTech.DeviceDesc2% = MCUSB4MN, USB\VID_1225&PID_1002
+
+;
+; General installation section
+;
+;----- Windows9x -----------
+[MCUSB4SD]
+CopyFiles=dev.copy,DllFiles
+AddReg=dev1.registry
+[MCUSB2EC]
+CopyFiles=dev.copy,DllFiles
+AddReg=dev1.registry
+[MCUSB4MN]
+CopyFiles=dev.copy,DllFiles
+AddReg=dev1.registry
+
+[dev.copy]
+hpmcusb.sys
+hpmcstdU.dll
+hpmcstd.dll
+
+[dev1.registry]
+HKR,,DevLoader,,*ntkern
+HKR,,NTMPDriver,,hpmcusb.SYS
+
+;------ Windows2KXP ----------
+[MCUSB4SD.NT]
+CopyFiles=MCUSB4SD., DriverFiles,DllFiles
+[MCUSB2EC.NT]
+CopyFiles=MCUSB2EC., DriverFiles,DllFiles
+[MCUSB4MN.NT]
+CopyFiles=MCUSB4MN., DriverFiles,DllFiles
+
+[DriverFiles]
+hpmcusb.sys
+
+;--------------------------
+[DllFiles]
+hpmcstdU.dll
+hpmcstd.dll
+
+;
+; Service Installation
+;
+[MCUSB4SD.NT.Services]
+AddService = HIPMCUSB, 0x00000002, HIPMCUSB_Service_Inst
+[MCUSB2EC.NT.Services]
+AddService = HIPMCUSB, 0x00000002, HIPMCUSB_Service_Inst
+[MCUSB4MN.NT.Services]
+AddService = HIPMCUSB, 0x00000002, HIPMCUSB_Service_Inst
+
+[HIPMCUSB_Service_Inst]
+DisplayName     = %HIPMCUSB.SvcDesc%
+ServiceType     = 1 ;%SERVICE_KERNEL_DRIVER%
+StartType       = 2 ;%SERVICE_AUTO_START%
+ErrorControl    = 1 ;%SERVICE_ERROR_NORMAL%
+ServiceBinary   = %12%\HPMCUSB.SYS
+LoadOrderGroup  = Base
+
+;
+; Software Installation
+;
+[MCUSB4SD.NT.SoftwareSettings]
+AddReg = HIPMCUSB_SoftwareDeviceSettings
+[MCUSB2EC.NT.SoftwareSettings]
+AddReg = HIPMCUSB_SoftwareDeviceSettings
+[MCUSB4MN.NT.SoftwareSettings]
+AddReg = HIPMCUSB_SoftwareDeviceSettings
+
+;
+; Source file information
+;
+[SourceDisksNames]
+1 = %DiskId%,"",1
+2 = %DiskId%,"",1
+
+[SourceDisksFiles]
+hpmcusb.sys = 1
+hpmcstdU.dll = 1
+hpmcstd.dll = 1
+
+[SourceDisksFiles.NT]
+hpmcusb.sys = 2
+hpmcstdU.dll = 2
+hpmcstd.dll = 2
+
+[Strings]
+;
+; Non-Localizable Strings
+;
+REG_SZ        = 0x00000000
+REG_MULTI_SZ  = 0x00010000
+REG_EXPAND_SZ = 0x00020000
+REG_BINARY    = 0x00000001
+REG_DWORD     = 0x00010001
+SERVICEROOT   = "System\CurrentControlSet\Services"
+
+;
+; Localizable Strings
+;
+HIPTech.DeviceDesc0 = "MCUSB4SD"
+HIPTech.DeviceDesc1 = "MCUSB2EC [E Series - MC Boad]"
+HIPTech.DeviceDesc2 = "MCUSB4MN"
+DiskId = ""
+HIPTech = "HI-P Tech Corporation"
+HIPMCUSB.SvcDesc="HIPMCUSB"
+HipMcusbClassName="HI-P Tech MCUSB"
+

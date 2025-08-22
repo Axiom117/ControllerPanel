@@ -1,0 +1,147 @@
+; Hpmcusb.inf
+;
+; Installation file (.inf) for the HPMCUSB device.
+;
+; (c) Copyright 2011 HI-P Tech Corporation 
+;
+
+[Version]
+Signature="$Windows NT$"
+Provider=%ProviderName%
+DriverVer=05/02/2011,1.0.0.0
+Class=HIP-MCUSB
+ClassGUID={B7F1F86A-07A6-466f-844B-8CFFF5799D6A}
+
+; ================== Class section ==================
+
+[ClassInstall32]
+Addreg=MyDeviceClassReg
+
+[MyDeviceClassReg]
+HKR,,,0,%ClassName%
+HKR,,Icon,,-20
+
+; ========== Manufacturer/Models sections ===========
+
+[Manufacturer]
+%ProviderName%=MyDevice_WinUSB,NTx86,NTamd64,NTia64
+
+[MyDevice_WinUSB.NTx86]
+%USB\HIPTech.DeviceDesc0%=MCUSB4SD, USB\VID_1225&PID_1000
+%USB\HIPTech.DeviceDesc1%=MCUSB2EC, USB\VID_1225&PID_1004
+
+[MyDevice_WinUSB.NTamd64]
+%USB\HIPTech.DeviceDesc0%=MCUSB4SD, USB\VID_1225&PID_1000
+%USB\HIPTech.DeviceDesc1%=MCUSB2EC, USB\VID_1225&PID_1004
+
+[MyDevice_WinUSB.NTia64]
+%USB\HIPTech.DeviceDesc0%=MCUSB4SD, USB\VID_1225&PID_1000
+%USB\HIPTech.DeviceDesc1%=MCUSB2EC, USB\VID_1225&PID_1004
+
+; =================== Installation ===================
+
+[MCUSB4SD]
+Include=winusb.inf
+Needs=WINUSB.NT
+
+[MCUSB4SD.Services]
+Include=winusb.inf
+AddService=WinUSB,0x00000002,WinUSB_ServiceInstall
+
+[MCUSB4SD.Wdf]
+KmdfService=WINUSB, WinUsb_Install
+
+[MCUSB4SD.HW]
+AddReg=Dev_AddReg_MCUSB4SD
+
+[MCUSB4SD.CoInstallers]
+AddReg=CoInstallers_AddReg
+CopyFiles=CoInstallers_CopyFiles
+
+[MCUSB2EC]
+Include=winusb.inf
+Needs=WINUSB.NT
+
+[MCUSB2EC.Services]
+Include=winusb.inf
+AddService=WinUSB,0x00000002,WinUSB_ServiceInstall
+
+[MCUSB2EC.Wdf]
+KmdfService=WINUSB, WinUsb_Install
+
+[MCUSB2EC.HW]
+AddReg=Dev_AddReg_MCUSB2EC
+
+[MCUSB2EC.CoInstallers]
+AddReg=CoInstallers_AddReg
+CopyFiles=CoInstallers_CopyFiles
+
+[WinUSB_ServiceInstall]
+DisplayName=%WinUSB_SvcDesc%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\WinUSB.sys
+
+[WinUSB_Install]
+KmdfLibraryVersion=1.9
+
+[Dev_AddReg_MCUSB4SD]
+HKR,,DeviceInterfaceGUIDs,0x10000,"{D9BEFAA6-90F9-4066-8D78-7AEA5F3AFBB0}"
+
+[Dev_AddReg_MCUSB2EC]
+HKR,,DeviceInterfaceGUIDs,0x10000,"{DC52D8EB-7191-4be7-92A8-4B282442431A}"
+
+[CoInstallers_AddReg]
+HKR,,CoInstallers32,0x00010000,"WdfCoInstaller01009.dll,WdfCoInstaller","WinUSBCoInstaller2.dll"
+
+[CoInstallers_CopyFiles]
+WinUSBCoInstaller2.dll
+WdfCoInstaller01009.dll
+WUDFUpdate_01009.dll
+hpmcstdU.dll
+hpmcstd.dll
+
+[DestinationDirs]
+CoInstallers_CopyFiles=11
+
+; ================= Source Media Section =====================
+
+[SourceDisksNames]
+1=%DISK_NAME%,,,\x86
+2=%DISK_NAME%,,,\amd64
+3=%DISK_NAME%,,,\ia64
+4=%DISK_NAME%,,,\dll\win32
+5=%DISK_NAME%,,,\dll\x64
+
+[SourceDisksFiles.x86]
+WinUSBCoInstaller2.dll=1
+WdfCoInstaller01009.dll=1
+WUDFUpdate_01009.dll=1
+hpmcstdU.dll=4
+hpmcstd.dll=4
+
+[SourceDisksFiles.amd64]
+WinUSBCoInstaller2.dll=2
+WdfCoInstaller01009.dll=2
+WUDFUpdate_01009.dll=2
+hpmcstdU.dll=5
+hpmcstd.dll=5
+
+[SourceDisksFiles.ia64]
+WinUSBCoInstaller2.dll=3
+WdfCoInstaller01009.dll=3
+WUDFUpdate_01009.dll=3
+hpmcstdU.dll=5
+hpmcstd.dll=5
+
+; =================== Strings ===================
+
+[Strings]
+ProviderName="HI-P Tech Corporation"
+USB\HIPTech.DeviceDesc0="MCUSB4SD"
+USB\HIPTech.DeviceDesc1="MCUSB2EC"
+WinUSB_SvcDesc="HI-P Tech MCUSB Device Driver"
+DISK_NAME="HI-P Tech MCUSB Driver Install Disk"
+ClassName="HI-P Tech MCUSB"
+
