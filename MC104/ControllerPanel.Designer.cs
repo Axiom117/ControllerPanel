@@ -37,9 +37,12 @@ namespace MC104
             this.toolStrip1 = new System.Windows.Forms.ToolStrip();
             this.toolStripLabel1 = new System.Windows.Forms.ToolStripLabel();
             this.toolStripProgressBar1 = new System.Windows.Forms.ToolStripProgressBar();
+            this.statusLabel = new System.Windows.Forms.ToolStripLabel();
             this.timer1 = new System.Windows.Forms.Timer(this.components);
             this.timer2 = new System.Windows.Forms.Timer(this.components);
             this.Status = new System.Windows.Forms.GroupBox();
+            this.button3 = new System.Windows.Forms.Button();
+            this.button2 = new System.Windows.Forms.Button();
             this.groupBox2 = new System.Windows.Forms.GroupBox();
             this.posZ = new System.Windows.Forms.Label();
             this.posY = new System.Windows.Forms.Label();
@@ -57,13 +60,13 @@ namespace MC104
             this.label13 = new System.Windows.Forms.Label();
             this.label12 = new System.Windows.Forms.Label();
             this.label11 = new System.Windows.Forms.Label();
-            this.label10 = new System.Windows.Forms.Label();
-            this.label8 = new System.Windows.Forms.Label();
-            this.label7 = new System.Windows.Forms.Label();
+            this.posZC = new System.Windows.Forms.Label();
+            this.posYC = new System.Windows.Forms.Label();
+            this.posXC = new System.Windows.Forms.Label();
             this.btnEmgStop = new System.Windows.Forms.Button();
-            this.deviceStatus = new System.Windows.Forms.Label();
             this.button7 = new System.Windows.Forms.Button();
             this.button1 = new System.Windows.Forms.Button();
+            this.deviceStatus = new System.Windows.Forms.Label();
             this.clearLogButton = new System.Windows.Forms.Button();
             this.logTextBox = new System.Windows.Forms.TextBox();
             this.startControllerButton = new System.Windows.Forms.Button();
@@ -75,6 +78,16 @@ namespace MC104
             this.controller1 = new System.Windows.Forms.PictureBox();
             this.panel_right = new System.Windows.Forms.Panel();
             this.controlPanel = new System.Windows.Forms.GroupBox();
+            this.groupBox3 = new System.Windows.Forms.GroupBox();
+            this.radioButton2 = new System.Windows.Forms.RadioButton();
+            this.label25 = new System.Windows.Forms.Label();
+            this.stepDistance = new System.Windows.Forms.TextBox();
+            this.label9 = new System.Windows.Forms.Label();
+            this.radioButton1 = new System.Windows.Forms.RadioButton();
+            this.speedSetting = new System.Windows.Forms.GroupBox();
+            this.label18 = new System.Windows.Forms.Label();
+            this.label17 = new System.Windows.Forms.Label();
+            this.trackBar1 = new System.Windows.Forms.TrackBar();
             this.labelSpeed = new System.Windows.Forms.Label();
             this.plusZ = new System.Windows.Forms.Button();
             this.plusY = new System.Windows.Forms.Button();
@@ -83,22 +96,9 @@ namespace MC104
             this.minusX = new System.Windows.Forms.Button();
             this.minusY = new System.Windows.Forms.Button();
             this.pictureBox2 = new System.Windows.Forms.PictureBox();
-            this.label9 = new System.Windows.Forms.Label();
             this.microsupportFront = new System.Windows.Forms.PictureBox();
-            this.stepDistance = new System.Windows.Forms.TextBox();
-            this.radioButton2 = new System.Windows.Forms.RadioButton();
-            this.radioButton1 = new System.Windows.Forms.RadioButton();
-            this.trackBar1 = new System.Windows.Forms.TrackBar();
             this.panel1 = new System.Windows.Forms.Panel();
             this.commStatus = new System.Windows.Forms.GroupBox();
-            this.statusLabel = new System.Windows.Forms.ToolStripLabel();
-            this.speedSetting = new System.Windows.Forms.GroupBox();
-            this.groupBox3 = new System.Windows.Forms.GroupBox();
-            this.label17 = new System.Windows.Forms.Label();
-            this.label18 = new System.Windows.Forms.Label();
-            this.label25 = new System.Windows.Forms.Label();
-            this.button2 = new System.Windows.Forms.Button();
-            this.button3 = new System.Windows.Forms.Button();
             this.toolStrip1.SuspendLayout();
             this.Status.SuspendLayout();
             this.groupBox2.SuspendLayout();
@@ -111,13 +111,13 @@ namespace MC104
             ((System.ComponentModel.ISupportInitialize)(this.controller1)).BeginInit();
             this.panel_right.SuspendLayout();
             this.controlPanel.SuspendLayout();
+            this.groupBox3.SuspendLayout();
+            this.speedSetting.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.trackBar1)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.microsupportFront)).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)(this.trackBar1)).BeginInit();
             this.panel1.SuspendLayout();
             this.commStatus.SuspendLayout();
-            this.speedSetting.SuspendLayout();
-            this.groupBox3.SuspendLayout();
             this.SuspendLayout();
             // 
             // toolStrip1
@@ -144,6 +144,12 @@ namespace MC104
             this.toolStripProgressBar1.Name = "toolStripProgressBar1";
             this.toolStripProgressBar1.Size = new System.Drawing.Size(100, 22);
             // 
+            // statusLabel
+            // 
+            this.statusLabel.Name = "statusLabel";
+            this.statusLabel.Size = new System.Drawing.Size(96, 22);
+            this.statusLabel.Text = "toolStripLabel2";
+            // 
             // Status
             // 
             this.Status.Controls.Add(this.button3);
@@ -163,6 +169,31 @@ namespace MC104
             this.Status.TabIndex = 57;
             this.Status.TabStop = false;
             this.Status.Text = "Status";
+            // 
+            // button3
+            // 
+            this.button3.BackColor = System.Drawing.Color.RoyalBlue;
+            this.button3.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.button3.ForeColor = System.Drawing.SystemColors.Control;
+            this.button3.Location = new System.Drawing.Point(364, 197);
+            this.button3.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.button3.Name = "button3";
+            this.button3.Size = new System.Drawing.Size(70, 70);
+            this.button3.TabIndex = 77;
+            this.button3.Text = "SIM";
+            this.button3.UseVisualStyleBackColor = false;
+            // 
+            // button2
+            // 
+            this.button2.BackColor = System.Drawing.Color.Orange;
+            this.button2.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.button2.Location = new System.Drawing.Point(185, 197);
+            this.button2.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.button2.Name = "button2";
+            this.button2.Size = new System.Drawing.Size(70, 70);
+            this.button2.TabIndex = 76;
+            this.button2.Text = "PAUSE";
+            this.button2.UseVisualStyleBackColor = false;
             // 
             // groupBox2
             // 
@@ -287,9 +318,9 @@ namespace MC104
             this.groupBox1.Controls.Add(this.label13);
             this.groupBox1.Controls.Add(this.label12);
             this.groupBox1.Controls.Add(this.label11);
-            this.groupBox1.Controls.Add(this.label10);
-            this.groupBox1.Controls.Add(this.label8);
-            this.groupBox1.Controls.Add(this.label7);
+            this.groupBox1.Controls.Add(this.posZC);
+            this.groupBox1.Controls.Add(this.posYC);
+            this.groupBox1.Controls.Add(this.posXC);
             this.groupBox1.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.groupBox1.Location = new System.Drawing.Point(224, 33);
             this.groupBox1.Name = "groupBox1";
@@ -297,7 +328,6 @@ namespace MC104
             this.groupBox1.TabIndex = 74;
             this.groupBox1.TabStop = false;
             this.groupBox1.Text = "From Midpoint of Stoke";
-            this.groupBox1.Enter += new System.EventHandler(this.groupBox1_Enter);
             // 
             // label16
             // 
@@ -362,38 +392,38 @@ namespace MC104
             this.label11.TabIndex = 68;
             this.label11.Text = "X^C: ";
             // 
-            // label10
+            // posZC
             // 
-            this.label10.AutoSize = true;
-            this.label10.Font = new System.Drawing.Font("Consolas", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.label10.Location = new System.Drawing.Point(93, 120);
-            this.label10.Name = "label10";
-            this.label10.Size = new System.Drawing.Size(46, 24);
-            this.label10.TabIndex = 73;
-            this.label10.Text = "0.0";
-            this.label10.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
+            this.posZC.AutoSize = true;
+            this.posZC.Font = new System.Drawing.Font("Consolas", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.posZC.Location = new System.Drawing.Point(93, 120);
+            this.posZC.Name = "posZC";
+            this.posZC.Size = new System.Drawing.Size(46, 24);
+            this.posZC.TabIndex = 73;
+            this.posZC.Text = "0.0";
+            this.posZC.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
-            // label8
+            // posYC
             // 
-            this.label8.AutoSize = true;
-            this.label8.Font = new System.Drawing.Font("Consolas", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.label8.Location = new System.Drawing.Point(93, 75);
-            this.label8.Name = "label8";
-            this.label8.Size = new System.Drawing.Size(46, 24);
-            this.label8.TabIndex = 72;
-            this.label8.Text = "0.0";
-            this.label8.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
+            this.posYC.AutoSize = true;
+            this.posYC.Font = new System.Drawing.Font("Consolas", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.posYC.Location = new System.Drawing.Point(93, 75);
+            this.posYC.Name = "posYC";
+            this.posYC.Size = new System.Drawing.Size(46, 24);
+            this.posYC.TabIndex = 72;
+            this.posYC.Text = "0.0";
+            this.posYC.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
-            // label7
+            // posXC
             // 
-            this.label7.AutoSize = true;
-            this.label7.Font = new System.Drawing.Font("Consolas", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.label7.Location = new System.Drawing.Point(93, 28);
-            this.label7.Name = "label7";
-            this.label7.Size = new System.Drawing.Size(46, 24);
-            this.label7.TabIndex = 71;
-            this.label7.Text = "0.0";
-            this.label7.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
+            this.posXC.AutoSize = true;
+            this.posXC.Font = new System.Drawing.Font("Consolas", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.posXC.Location = new System.Drawing.Point(93, 28);
+            this.posXC.Name = "posXC";
+            this.posXC.Size = new System.Drawing.Size(46, 24);
+            this.posXC.TabIndex = 71;
+            this.posXC.Text = "0.0";
+            this.posXC.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // btnEmgStop
             // 
@@ -408,16 +438,6 @@ namespace MC104
             this.btnEmgStop.Text = "STOP";
             this.btnEmgStop.UseVisualStyleBackColor = false;
             this.btnEmgStop.Click += new System.EventHandler(this.button_emgstop_Click);
-            // 
-            // deviceStatus
-            // 
-            this.deviceStatus.AutoSize = true;
-            this.deviceStatus.Font = new System.Drawing.Font("Microsoft Sans Serif", 14.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.deviceStatus.ForeColor = System.Drawing.Color.Firebrick;
-            this.deviceStatus.Location = new System.Drawing.Point(12, 218);
-            this.deviceStatus.Name = "deviceStatus";
-            this.deviceStatus.Size = new System.Drawing.Size(0, 24);
-            this.deviceStatus.TabIndex = 0;
             // 
             // button7
             // 
@@ -444,6 +464,16 @@ namespace MC104
             this.button1.Text = "Center";
             this.button1.UseVisualStyleBackColor = false;
             this.button1.Click += new System.EventHandler(this.button_center_Click);
+            // 
+            // deviceStatus
+            // 
+            this.deviceStatus.AutoSize = true;
+            this.deviceStatus.Font = new System.Drawing.Font("Microsoft Sans Serif", 14.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.deviceStatus.ForeColor = System.Drawing.Color.Firebrick;
+            this.deviceStatus.Location = new System.Drawing.Point(12, 218);
+            this.deviceStatus.Name = "deviceStatus";
+            this.deviceStatus.Size = new System.Drawing.Size(0, 24);
+            this.deviceStatus.TabIndex = 0;
             // 
             // clearLogButton
             // 
@@ -503,7 +533,6 @@ namespace MC104
             this.Devices.TabIndex = 58;
             this.Devices.TabStop = false;
             this.Devices.Text = "Devices";
-            this.Devices.Enter += new System.EventHandler(this.Devices_Enter);
             // 
             // controller4
             // 
@@ -580,6 +609,133 @@ namespace MC104
             this.controlPanel.TabStop = false;
             this.controlPanel.Text = "Control Panel";
             // 
+            // groupBox3
+            // 
+            this.groupBox3.Controls.Add(this.radioButton2);
+            this.groupBox3.Controls.Add(this.label25);
+            this.groupBox3.Controls.Add(this.stepDistance);
+            this.groupBox3.Controls.Add(this.label9);
+            this.groupBox3.Controls.Add(this.radioButton1);
+            this.groupBox3.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.groupBox3.Location = new System.Drawing.Point(213, 384);
+            this.groupBox3.Name = "groupBox3";
+            this.groupBox3.Size = new System.Drawing.Size(257, 135);
+            this.groupBox3.TabIndex = 75;
+            this.groupBox3.TabStop = false;
+            this.groupBox3.Text = "Motion Mode";
+            // 
+            // radioButton2
+            // 
+            this.radioButton2.Appearance = System.Windows.Forms.Appearance.Button;
+            this.radioButton2.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.radioButton2.Location = new System.Drawing.Point(132, 35);
+            this.radioButton2.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.radioButton2.Name = "radioButton2";
+            this.radioButton2.Size = new System.Drawing.Size(115, 45);
+            this.radioButton2.TabIndex = 15;
+            this.radioButton2.Text = "STEP Mode";
+            this.radioButton2.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.radioButton2.UseVisualStyleBackColor = true;
+            this.radioButton2.CheckedChanged += new System.EventHandler(this.radioButton2_CheckedChanged);
+            // 
+            // label25
+            // 
+            this.label25.Font = new System.Drawing.Font("Consolas", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.label25.ForeColor = System.Drawing.SystemColors.ActiveCaptionText;
+            this.label25.Location = new System.Drawing.Point(26, 99);
+            this.label25.Name = "label25";
+            this.label25.Size = new System.Drawing.Size(50, 24);
+            this.label25.TabIndex = 79;
+            this.label25.Text = "∆s: ";
+            this.label25.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            // 
+            // stepDistance
+            // 
+            this.stepDistance.Font = new System.Drawing.Font("Consolas", 15F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.stepDistance.Location = new System.Drawing.Point(87, 95);
+            this.stepDistance.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.stepDistance.Name = "stepDistance";
+            this.stepDistance.Size = new System.Drawing.Size(102, 31);
+            this.stepDistance.TabIndex = 71;
+            this.stepDistance.Text = "0.0";
+            this.stepDistance.TextAlign = System.Windows.Forms.HorizontalAlignment.Right;
+            // 
+            // label9
+            // 
+            this.label9.AutoSize = true;
+            this.label9.Font = new System.Drawing.Font("Consolas", 14.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.label9.Location = new System.Drawing.Point(195, 101);
+            this.label9.Name = "label9";
+            this.label9.Size = new System.Drawing.Size(30, 22);
+            this.label9.TabIndex = 72;
+            this.label9.Text = "μm";
+            // 
+            // radioButton1
+            // 
+            this.radioButton1.Appearance = System.Windows.Forms.Appearance.Button;
+            this.radioButton1.CheckAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.radioButton1.Checked = true;
+            this.radioButton1.FlatAppearance.BorderColor = System.Drawing.Color.Black;
+            this.radioButton1.FlatStyle = System.Windows.Forms.FlatStyle.System;
+            this.radioButton1.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.radioButton1.Location = new System.Drawing.Point(6, 35);
+            this.radioButton1.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.radioButton1.Name = "radioButton1";
+            this.radioButton1.Size = new System.Drawing.Size(115, 45);
+            this.radioButton1.TabIndex = 1;
+            this.radioButton1.TabStop = true;
+            this.radioButton1.Text = "JOG Mode";
+            this.radioButton1.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.radioButton1.UseVisualStyleBackColor = true;
+            this.radioButton1.CheckedChanged += new System.EventHandler(this.radioButton1_CheckedChanged);
+            // 
+            // speedSetting
+            // 
+            this.speedSetting.Controls.Add(this.label18);
+            this.speedSetting.Controls.Add(this.label17);
+            this.speedSetting.Controls.Add(this.trackBar1);
+            this.speedSetting.Controls.Add(this.labelSpeed);
+            this.speedSetting.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.speedSetting.Location = new System.Drawing.Point(12, 384);
+            this.speedSetting.Name = "speedSetting";
+            this.speedSetting.Size = new System.Drawing.Size(195, 135);
+            this.speedSetting.TabIndex = 74;
+            this.speedSetting.TabStop = false;
+            this.speedSetting.Text = "Speed";
+            // 
+            // label18
+            // 
+            this.label18.AutoSize = true;
+            this.label18.Font = new System.Drawing.Font("Consolas", 12F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.label18.Location = new System.Drawing.Point(147, 107);
+            this.label18.Name = "label18";
+            this.label18.Size = new System.Drawing.Size(45, 19);
+            this.label18.TabIndex = 75;
+            this.label18.Text = "2500";
+            // 
+            // label17
+            // 
+            this.label17.AutoSize = true;
+            this.label17.Font = new System.Drawing.Font("Consolas", 12F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.label17.Location = new System.Drawing.Point(6, 107);
+            this.label17.Name = "label17";
+            this.label17.Size = new System.Drawing.Size(27, 19);
+            this.label17.TabIndex = 74;
+            this.label17.Text = "50";
+            // 
+            // trackBar1
+            // 
+            this.trackBar1.LargeChange = 500;
+            this.trackBar1.Location = new System.Drawing.Point(6, 78);
+            this.trackBar1.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.trackBar1.Maximum = 2500;
+            this.trackBar1.Name = "trackBar1";
+            this.trackBar1.Size = new System.Drawing.Size(183, 45);
+            this.trackBar1.TabIndex = 50;
+            this.trackBar1.TickFrequency = 10000;
+            this.trackBar1.Value = 1500;
+            this.trackBar1.Scroll += new System.EventHandler(this.trackBar1_Scroll);
+            // 
             // labelSpeed
             // 
             this.labelSpeed.AutoSize = true;
@@ -589,7 +745,6 @@ namespace MC104
             this.labelSpeed.Size = new System.Drawing.Size(100, 22);
             this.labelSpeed.TabIndex = 73;
             this.labelSpeed.Text = "1500 μm/s";
-            this.labelSpeed.Click += new System.EventHandler(this.labelSpeed_Click);
             // 
             // plusZ
             // 
@@ -709,17 +864,6 @@ namespace MC104
             this.pictureBox2.TabIndex = 57;
             this.pictureBox2.TabStop = false;
             // 
-            // label9
-            // 
-            this.label9.AutoSize = true;
-            this.label9.Font = new System.Drawing.Font("Consolas", 14.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.label9.Location = new System.Drawing.Point(195, 101);
-            this.label9.Name = "label9";
-            this.label9.Size = new System.Drawing.Size(30, 22);
-            this.label9.TabIndex = 72;
-            this.label9.Text = "μm";
-            this.label9.Click += new System.EventHandler(this.label9_Click);
-            // 
             // microsupportFront
             // 
             this.microsupportFront.BackColor = System.Drawing.SystemColors.Window;
@@ -731,63 +875,6 @@ namespace MC104
             this.microsupportFront.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
             this.microsupportFront.TabIndex = 56;
             this.microsupportFront.TabStop = false;
-            // 
-            // stepDistance
-            // 
-            this.stepDistance.Font = new System.Drawing.Font("Consolas", 15F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.stepDistance.Location = new System.Drawing.Point(87, 95);
-            this.stepDistance.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
-            this.stepDistance.Name = "stepDistance";
-            this.stepDistance.Size = new System.Drawing.Size(102, 31);
-            this.stepDistance.TabIndex = 71;
-            this.stepDistance.Text = "0.0";
-            this.stepDistance.TextAlign = System.Windows.Forms.HorizontalAlignment.Right;
-            // 
-            // radioButton2
-            // 
-            this.radioButton2.Appearance = System.Windows.Forms.Appearance.Button;
-            this.radioButton2.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.radioButton2.Location = new System.Drawing.Point(132, 35);
-            this.radioButton2.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
-            this.radioButton2.Name = "radioButton2";
-            this.radioButton2.Size = new System.Drawing.Size(115, 45);
-            this.radioButton2.TabIndex = 15;
-            this.radioButton2.Text = "STEP Mode";
-            this.radioButton2.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
-            this.radioButton2.UseVisualStyleBackColor = true;
-            this.radioButton2.CheckedChanged += new System.EventHandler(this.radioButton2_CheckedChanged);
-            // 
-            // radioButton1
-            // 
-            this.radioButton1.Appearance = System.Windows.Forms.Appearance.Button;
-            this.radioButton1.CheckAlign = System.Drawing.ContentAlignment.MiddleCenter;
-            this.radioButton1.Checked = true;
-            this.radioButton1.FlatAppearance.BorderColor = System.Drawing.Color.Black;
-            this.radioButton1.FlatStyle = System.Windows.Forms.FlatStyle.System;
-            this.radioButton1.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.radioButton1.Location = new System.Drawing.Point(6, 35);
-            this.radioButton1.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
-            this.radioButton1.Name = "radioButton1";
-            this.radioButton1.Size = new System.Drawing.Size(115, 45);
-            this.radioButton1.TabIndex = 1;
-            this.radioButton1.TabStop = true;
-            this.radioButton1.Text = "JOG Mode";
-            this.radioButton1.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
-            this.radioButton1.UseVisualStyleBackColor = true;
-            this.radioButton1.CheckedChanged += new System.EventHandler(this.radioButton1_CheckedChanged);
-            // 
-            // trackBar1
-            // 
-            this.trackBar1.LargeChange = 500;
-            this.trackBar1.Location = new System.Drawing.Point(6, 78);
-            this.trackBar1.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
-            this.trackBar1.Maximum = 2500;
-            this.trackBar1.Name = "trackBar1";
-            this.trackBar1.Size = new System.Drawing.Size(183, 45);
-            this.trackBar1.TabIndex = 50;
-            this.trackBar1.TickFrequency = 10000;
-            this.trackBar1.Value = 1500;
-            this.trackBar1.Scroll += new System.EventHandler(this.trackBar1_Scroll);
             // 
             // panel1
             // 
@@ -811,99 +898,6 @@ namespace MC104
             this.commStatus.TabIndex = 82;
             this.commStatus.TabStop = false;
             this.commStatus.Text = "Comm Status";
-            // 
-            // statusLabel
-            // 
-            this.statusLabel.Name = "statusLabel";
-            this.statusLabel.Size = new System.Drawing.Size(96, 22);
-            this.statusLabel.Text = "toolStripLabel2";
-            // 
-            // speedSetting
-            // 
-            this.speedSetting.Controls.Add(this.label18);
-            this.speedSetting.Controls.Add(this.label17);
-            this.speedSetting.Controls.Add(this.trackBar1);
-            this.speedSetting.Controls.Add(this.labelSpeed);
-            this.speedSetting.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.speedSetting.Location = new System.Drawing.Point(12, 384);
-            this.speedSetting.Name = "speedSetting";
-            this.speedSetting.Size = new System.Drawing.Size(195, 135);
-            this.speedSetting.TabIndex = 74;
-            this.speedSetting.TabStop = false;
-            this.speedSetting.Text = "Speed";
-            this.speedSetting.Enter += new System.EventHandler(this.groupBox3_Enter);
-            // 
-            // groupBox3
-            // 
-            this.groupBox3.Controls.Add(this.radioButton2);
-            this.groupBox3.Controls.Add(this.label25);
-            this.groupBox3.Controls.Add(this.stepDistance);
-            this.groupBox3.Controls.Add(this.label9);
-            this.groupBox3.Controls.Add(this.radioButton1);
-            this.groupBox3.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.groupBox3.Location = new System.Drawing.Point(213, 384);
-            this.groupBox3.Name = "groupBox3";
-            this.groupBox3.Size = new System.Drawing.Size(257, 135);
-            this.groupBox3.TabIndex = 75;
-            this.groupBox3.TabStop = false;
-            this.groupBox3.Text = "Motion Mode";
-            // 
-            // label17
-            // 
-            this.label17.AutoSize = true;
-            this.label17.Font = new System.Drawing.Font("Consolas", 12F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.label17.Location = new System.Drawing.Point(6, 107);
-            this.label17.Name = "label17";
-            this.label17.Size = new System.Drawing.Size(27, 19);
-            this.label17.TabIndex = 74;
-            this.label17.Text = "50";
-            // 
-            // label18
-            // 
-            this.label18.AutoSize = true;
-            this.label18.Font = new System.Drawing.Font("Consolas", 12F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.label18.Location = new System.Drawing.Point(147, 107);
-            this.label18.Name = "label18";
-            this.label18.Size = new System.Drawing.Size(45, 19);
-            this.label18.TabIndex = 75;
-            this.label18.Text = "2500";
-            this.label18.Click += new System.EventHandler(this.label18_Click);
-            // 
-            // label25
-            // 
-            this.label25.Font = new System.Drawing.Font("Consolas", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.label25.ForeColor = System.Drawing.SystemColors.ActiveCaptionText;
-            this.label25.Location = new System.Drawing.Point(26, 99);
-            this.label25.Name = "label25";
-            this.label25.Size = new System.Drawing.Size(50, 24);
-            this.label25.TabIndex = 79;
-            this.label25.Text = "∆s: ";
-            this.label25.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
-            // 
-            // button2
-            // 
-            this.button2.BackColor = System.Drawing.Color.Orange;
-            this.button2.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.button2.Location = new System.Drawing.Point(185, 197);
-            this.button2.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
-            this.button2.Name = "button2";
-            this.button2.Size = new System.Drawing.Size(70, 70);
-            this.button2.TabIndex = 76;
-            this.button2.Text = "PAUSE";
-            this.button2.UseVisualStyleBackColor = false;
-            // 
-            // button3
-            // 
-            this.button3.BackColor = System.Drawing.Color.RoyalBlue;
-            this.button3.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.button3.ForeColor = System.Drawing.SystemColors.Control;
-            this.button3.Location = new System.Drawing.Point(364, 197);
-            this.button3.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
-            this.button3.Name = "button3";
-            this.button3.Size = new System.Drawing.Size(70, 70);
-            this.button3.TabIndex = 77;
-            this.button3.Text = "SIM";
-            this.button3.UseVisualStyleBackColor = false;
             // 
             // ControllerPanel
             // 
@@ -939,16 +933,16 @@ namespace MC104
             ((System.ComponentModel.ISupportInitialize)(this.controller1)).EndInit();
             this.panel_right.ResumeLayout(false);
             this.controlPanel.ResumeLayout(false);
+            this.groupBox3.ResumeLayout(false);
+            this.groupBox3.PerformLayout();
+            this.speedSetting.ResumeLayout(false);
+            this.speedSetting.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.trackBar1)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.microsupportFront)).EndInit();
-            ((System.ComponentModel.ISupportInitialize)(this.trackBar1)).EndInit();
             this.panel1.ResumeLayout(false);
             this.commStatus.ResumeLayout(false);
             this.commStatus.PerformLayout();
-            this.speedSetting.ResumeLayout(false);
-            this.speedSetting.PerformLayout();
-            this.groupBox3.ResumeLayout(false);
-            this.groupBox3.PerformLayout();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -1011,9 +1005,9 @@ namespace MC104
         private Panel panel1;
         private GroupBox Devices;
         private GroupBox groupBox1;
-        private Label label10;
-        private Label label8;
-        private Label label7;
+        private Label posZC;
+        private Label posYC;
+        private Label posXC;
         private GroupBox groupBox2;
         private Label label13;
         private Label label12;

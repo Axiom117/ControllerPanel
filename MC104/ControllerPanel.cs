@@ -36,7 +36,7 @@ namespace MC104
 {
     public partial class ControllerPanel : Form
     {
-        #region Class properties and variables
+        #region Class Properties and Variables
 
         /// microsupportConfig object stores the configuration settings for the Microsupport device.
         private MicrosupportConfig MConfig = null;
@@ -51,6 +51,11 @@ namespace MC104
 
         /// The controllerServer object to manage the controller server operations.
         private ControllerServer_v1 controllerServer;
+
+        /// Range of movement for each axis in micrometers (um).
+        private const double RANGE_X = 20000; // X軸の移動範囲 (um)
+        private const double RANGE_Y = 20000; // Y軸の移動範囲 (um)
+        private const double RANGE_Z = 30000; // Z軸の移動範囲 (um)
 
         #endregion
 
@@ -268,6 +273,10 @@ namespace MC104
                     posX.Text = currentX.ToString("0.0");
                     posY.Text = currentY.ToString("0.0");
                     posZ.Text = currentZ.ToString("0.0");
+
+                    posXC.Text = (currentX - RANGE_X/2).ToString("0.0");
+                    posYC.Text = (currentY - RANGE_Y/2).ToString("0.0");
+                    posZC.Text = (- currentZ + RANGE_Z/2).ToString("0.0");
                 }
             }
         }
@@ -665,50 +674,5 @@ namespace MC104
             }
         }
         #endregion
-
-        private void groupBox1_Enter(object sender, EventArgs e)
-        {
-
-        }
-
-        private void Devices_Enter(object sender, EventArgs e)
-        {
-
-        }
-
-        private void groupBox3_Enter(object sender, EventArgs e)
-        {
-
-        }
-
-        private void labelSpeed_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void textBox6_TextChanged(object sender, EventArgs e)
-        {
-
-        }
-
-        private void textBox7_TextChanged(object sender, EventArgs e)
-        {
-
-        }
-
-        private void textBox5_TextChanged(object sender, EventArgs e)
-        {
-
-        }
-
-        private void label9_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void label18_Click(object sender, EventArgs e)
-        {
-
-        }
     }
 }
