@@ -510,7 +510,7 @@ namespace MicrosupportController
                 if (speedData.dwHighSpeed < speedData.dwLowSpeed)
                     speedData.dwHighSpeed = speedData.dwLowSpeed;
 
-                speedData.dwRate = new uint[] { 1000, 8191, 8191 }; // Acceleration rate for each segment of motion (multi-stage ramp-up).
+                speedData.dwRate = new uint[] { 50, 8191, 8191 }; // Acceleration rate for each segment of motion (multi-stage ramp-up).
                 speedData.dwRateChgPnt = new uint[] { 8191, 8191 }; // Points where the rate changes. Use 8191 means a simple trapezoidal drive.
 
                 /// Compute S-curve weighting factor based on speed difference.
