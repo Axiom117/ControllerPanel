@@ -715,7 +715,7 @@ namespace MicrosupportController
         }
 
         /// <summary>
-        /// Starts the absolute encoder movement for the specified axis to reach the target position.
+        /// Starts the absolute encoder movement for the specified axis to reach the target position. Note that GetPosition() is used as the reference point.
         /// </summary>
         public uint StartIncAbsEnc(AXIS axis, int targetPosition)
         {
@@ -772,7 +772,7 @@ namespace MicrosupportController
             _ = StartIncAbs(AXIS.Z, ZTarget);
         }
 
-        /// Relative step movement from the current position of the axes. Origin is the center of the range.
+        /// Relative step movement from the current position of the axes. Origin is the center of the stoke.
         public async Task StartAbsFromCenter(double x, double y, double z)
         {
 
@@ -782,7 +782,7 @@ namespace MicrosupportController
         }
 
         /// <summary>
-        /// Moves the X, Y, and Z axes by the specified number of pulses (incremental). Positive values move forward, negative values move backward.
+        /// Moves the X, Y, and Z axes by the specified number of pulses (incremental) with buffer. Positive values move forward, negative values move backward.
         /// </summary>
         public uint StartIncBufferEnc(int xPulse, int yPulse, int zPulse)
         {
@@ -834,26 +834,22 @@ namespace MicrosupportController
         }
 
         /// <summary>
-        /// 同时移动三个轴指定的微米数(增量式)
+        /// Moves simultaneously the X, Y, and Z axes by the specified number of micrometers (incremental) with buffer.
         /// </summary>
         public uint StartIncBuffer(double xUm, double yUm, double zUm)
         {
-            // 将微米值转换为脉冲数
+            /// Convert micrometer values to pulse values for each axis.
             int xPulse = Um2enc(AXIS.X, xUm);
             int yPulse = Um2enc(AXIS.Y, yUm);
             int zPulse = Um2enc(AXIS.Z, zUm);
 
-            // 调用脉冲版本的方法
+            /// Call the StartIncBufferEnc method with the calculated pulse values.
             return StartIncBufferEnc(xPulse, yPulse, zPulse);
         }
 
         /// <summary>
-        /// 同时移动三个轴指定的微米数(增量式)并等待完成
+        /// Moves simultaneously the X, Y, and Z axes by the specified number of micrometers (incremental) with buffer and waits for the movement to complete.
         /// </summary>
-        /// <param name="xUm">X轴移动的微米数</param>
-        /// <param name="yUm">Y轴移动的微米数</param>
-        /// <param name="zUm">Z轴移动的微米数</param>
-        /// <returns>异步任务</returns>
         public async Task StartIncBufferAsync(double xUm, double yUm, double zUm)
         {
             StartIncBuffer(xUm, yUm, zUm);
@@ -1055,5 +1051,4 @@ namespace MicrosupportController
         #endregion
 
     }
-
 }
