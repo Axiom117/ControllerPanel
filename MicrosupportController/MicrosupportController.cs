@@ -13,6 +13,9 @@
 /// version 2.0.0.0     2025/05/21
 ///                     Documentation update and refactoring.
 ///                     Modified by Haoran, Yao
+/// version 2.0.0.1     2025/11/11
+///                     Removing redundant usings.
+///                     Modified by Haoran, Yao
 ///----------------------------------------------------------------------------
 
 using System;
@@ -20,6 +23,7 @@ using HpmcstdCs;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Diagnostics.Eventing.Reader;
+using System.Diagnostics;
 
 namespace MicrosupportController
 {
@@ -43,16 +47,13 @@ namespace MicrosupportController
         /// Handler of the motion controller.
         private uint hController = 0xFFFFFFFF;
 
-        private bool _isInitialized = false;
-        private string _initializationError = "";
+        /// Initialization status and error message.
+        private bool _isInitialized = false; // flag
+        private string _initializationError = ""; // error message
+        public bool IsInitialized => _isInitialized; // read-only properties
+        public string InitializationError => _initializationError; // read-only properties
 
-        public bool IsInitialized => _isInitialized;
-
-        public string InitializationError => _initializationError;
-
-        /// <summary>
-        /// microsupportInstances are static dictionary of Microsupport objects. It stores the reference of instances of Microsupport, instead of the instance itself. Useing deviceID as key, we can have multiple instances for different devices
-        /// </summary>
+        /// Dictionary to hold Microsupport instances for different device IDs.
         public static readonly Dictionary<string, Microsupport> controllers = new Dictionary<string, Microsupport>();
 
         /// Keep track of controllers that have reported errors to avoid duplicate error messages.
@@ -62,50 +63,38 @@ namespace MicrosupportController
 
         #region Constants and Enumerators
 
-        /// <summary>
-        /// maximum number of axes supported by the controller.
-        /// </summary>
+        /// Maximum number of axes supported by the controller
         public const int MC104_MAX_AXES = 4;
 
-        /// <summary>
-        /// axis code.
-        /// </summary>
+        /// Axis code
         public const ushort MC104_AXIS1 = 0;
         public const ushort MC104_AXIS2 = 1;
         public const ushort MC104_AXIS3 = 2;
 
-        /// <summary>
-        /// driving modes.
-        /// </summary>
+        /// Driving modes
         public const ushort MC104_INDEX_FORWARD = 0; // INC
         public const ushort MC104_INDEX_REVERSE = 1;
         public const ushort MC104_SCAN_FORWARD = 2; // JOG
         public const ushort MC104_SCAN_REVERSE = 3;
 
-        /// <summary>
-        /// homming patterns.
-        /// </summary>
-        public const ushort MC104_ORG_0 = 0; // ユーザー定義原点復帰モード
-        public const ushort MC104_ORG_1 = 1; // 原点信号の－側エッジ検出
-        public const ushort MC104_ORG_2 = 2; // 原点信号の－側エッジ検出後、Z相＋側立ち上がりエッジ検出
-        public const ushort MC104_ORG_3 = 3; // －リミット信号のエッジ検出
-        public const ushort MC104_ORG_4 = 4; // ＋リミット信号のエッジ検出
-        public const ushort MC104_ORG_5 = 5; // －リミット信号のエッジ検出後、Z相＋側立ち上がりエッジ検出
-        public const ushort MC104_ORG_6 = 6; // ＋リミット信号のエッジ検出後、Z相－側立ち上がりエッジ検出
-        public const ushort MC104_ORG_7 = 7; // －Z相エッジ検出
-        public const ushort MC104_ORG_8 = 8; // 原点信号の＋側エッジ検出
-        public const ushort MC104_ORG_9 = 9; // 原点信号の＋側エッジ検出後、Z相－側立ち上がりエッジ検出
+        /// Homming patterns.
+        public const ushort MC104_ORG_0 = 0; // User defined origin return mode
+        public const ushort MC104_ORG_1 = 1; // Origin signal - side edge detection
+        public const ushort MC104_ORG_2 = 2; // Origin signal - side edge detection after Z phase + side rising edge detection
+        public const ushort MC104_ORG_3 = 3; // - Limit signal edge detection
+        public const ushort MC104_ORG_4 = 4; // + Limit signal edge detection
+        public const ushort MC104_ORG_5 = 5; // - Limit signal edge detection after Z phase + side rising edge detection
+        public const ushort MC104_ORG_6 = 6; // + Limit signal edge detection after Z phase - side rising edge detection
+        public const ushort MC104_ORG_7 = 7; // - Z phase edge detection
+        public const ushort MC104_ORG_8 = 8; // Origin signal + side edge detection
+        public const ushort MC104_ORG_9 = 9; // Origin signal + side edge detection after Z phase - side rising edge detection
 
-        /// <summary>
-        /// resolution of each axis (um/pulse)
-        /// </summary>
+        /// Resolution of each axis (um/pulse)
         private const double RESOLUTIONS_AXIS_X = 0.05;
         private const double RESOLUTIONS_AXIS_Y = 0.05;
         private const double RESOLUTIONS_AXIS_Z = 0.05;
 
-        /// <summary>
         /// Represents the axes in a three-dimensional coordinate system.
-        /// </summary>
         public enum AXIS
         {
             X,
@@ -113,26 +102,22 @@ namespace MicrosupportController
             Z,
         }
 
-        /// <summary>
         /// Represents the direction of movement or operation.
-        /// </summary>
         public enum DIRECTION
         {
             FORWARD,
             REVERSE
         }
 
-        /// <summary>
-        /// max speed (pulse/sec)
-        /// </summary>
-        private const int MAX_SPEED = 50000;        // X軸, Y軸, Z軸
-        private const double MAX_UM_SPEED = MAX_SPEED * RESOLUTIONS_AXIS_X;        // X軸, Y軸, Z軸
+        /// Max speed (pulse/sec)
+        private const int MAX_SPEED = 50000; // X axis, Y axis, Z axis
+        private const double MAX_UM_SPEED = MAX_SPEED * RESOLUTIONS_AXIS_X; // X axis, Y axis, Z axis
         private const double SPEED_DEFAULT = 1000;
 
         /// Range of movement for each axis in micrometers (um).
-        private const double RANGE_X = 20000; // X軸の移動範囲 (um)
-        private const double RANGE_Y = 20000; // Y軸の移動範囲 (um)
-        private const double RANGE_Z = 30000; // Z軸の移動範囲 (um)
+        private const double RANGE_X = 20000; // X axis movement range (um)
+        private const double RANGE_Y = 20000; // Y axis movement range (um)
+        private const double RANGE_Z = 30000; // Z axis movement range (um)
 
         private string comment = "";
 
@@ -141,7 +126,7 @@ namespace MicrosupportController
 
         #endregion
 
-        #region Class constructors
+        #region Class constructors and utilities
         /// <summary>
         /// Retrieves a singleton instance of the <see cref="Microsupport"/> class for the specified device ID.
         /// </summary>
@@ -160,15 +145,16 @@ namespace MicrosupportController
                 {
                     /// Create a new instance of Microsupport and add it to the dictionary.
                     var instance = new Microsupport((ushort)deviceId);
-                    
+
+                    /// Check if the instance was initialized successfully.
                     if (!instance.IsInitialized)
                     {
-                        //if (!errorReportedControllers.Contains((ushort)deviceId))
-                        //{
-                        //    /// Log the error only once for each device ID.
-                        //    Console.WriteLine($"Error initializing Microsupport for device {name}: {instance.InitializationError}");
-                        //    errorReportedControllers.Add((ushort)deviceId);
-                        //}
+                        /// Log the error only once for each device ID.
+                        if (!errorReportedControllers.Contains((ushort)deviceId))
+                        {
+                            Console.WriteLine($"Error initializing Microsupport for device {name}: {instance.InitializationError}");
+                            errorReportedControllers.Add((ushort)deviceId);
+                        }
                         return null; // or handle the error as needed
                     }
 
@@ -199,10 +185,6 @@ namespace MicrosupportController
         }
 
         /// <summary>
-        /// initialize the motion controller. This method depends on the external DLL functions defined in Hpmcstd class. These functions are imported from the Hpmcstd.dll dynamic link library.
-        /// </summary>
-
-        /// <summary>
         /// Checks if the controller is still connected by querying the hardware status.
         /// </summary>
         /// <returns>True if the controller is connected; otherwise, false.</returns>
@@ -218,47 +200,54 @@ namespace MicrosupportController
             return status == Hpmcstd.MCSD_ERROR_SUCCESS;
         }
 
+        /// <summary>
+        /// Initializes the controller with the specified device ID and configures its axes.
+        /// </summary>
+        /// <remarks>This method attempts to open a connection to the device using the provided ID. If the
+        /// connection is successful, it configures each axis of the device with predefined settings, including pulse
+        /// output mode, limit switch mode, and signal stop mode. If the initialization fails, the method sets an error
+        /// message and marks the controller as uninitialized.</remarks>
+        /// <param name="ID">The unique identifier of the device to initialize. Must be a valid device ID.</param>
         public void Initialize(ushort ID)
         {
             try
             {
                 /// opens the device with the specified ID.
-                hController = Hpmcstd.McsdOpen("MCUSB4sd", ID);  //  Hpmcstd.McsdOpen("MCUSB4sd", ID) is calling the Hpmcstd library to open the motion controller with the specified ID.
+                hController = Hpmcstd.McsdOpen("MCUSB4sd", ID); // McsdOpen function opens the device and returns a handle.
 
-                /// Check if the controller is opened successfully. hController should not be 0xFFFFFFFF.
                 if (this.IsValid)
                 {
-                    /// err is a variable that stores the error code returned by the Hpmcstd library functions.
-                    int err = 0;
-                    /// Set the speed of each axe to the default speed.
+                    int err = 0; // stores the error code returned by the Hpmcstd library functions.
+
+                    /// Sets up each axis with specific configurations.
                     for (ushort i = 0; i < MC104_MAX_AXES; i++)
                     {
-                        /// set the pulse mode
-                        // set the pulse output mode to 2 pulse mode
-                        // DIR   output port 	CW pulse  active High
-                        // PULSE output port	CCW pulse active High
+                        /// McsdSetPulseMode(hDevice, wAxis, wMode) function sets the pulse output mode for the specified axis.
+                        // set the pulse output mode to 4 (CW/CCW pulse active High )
+                        // DIR   output port - CW pulse  active High
+                        // PULSE output port - CCW pulse active High
                         err = (int)Hpmcstd.McsdSetPulseMode(hController, i, 4);
 
-                        /// set the limit signal to active high
+                        /// McsdSetLimit(hDevice, wAxis, pwLevel) function sets the limit switch mode for the specified axis.
                         // +LMT		  input signal active level	High
                         // -LMT		  input signal active level	High
                         // ALARM	  input signal active level	High
                         // INPOSITION input signal active level	High
                         err = (int)Hpmcstd.McsdSetLimit(hController, i, 0x00);
 
-                        /// set the signal stop mode
-                        // アラーム信号       無効
-                        // 位置決め完了信号   無効
-                        // リミット信号検出時 急停止
+                        /// McsdSetSignalStop(hDevice, wAxis, wAlarmStop, wInposStop, wLimitStop) function sets the signal stop mode for the specified axis.
+                        // ALARM signal stop   enabled
+                        // INPOSITION signal stop enabled
+                        // LIMIT signal stop    enabled
                         err = (int)Hpmcstd.McsdSetSignalStop(hController, i, 0, 0, 2);
                     }
 
-                    _isInitialized = true; // Set the initialization flag to true.
+                    _isInitialized = true;
                     _initializationError = ""; // Clear any previous initialization error message.
                 }
                 else
                 {
-                    _isInitialized = false; // Set the initialization flag to false.
+                    _isInitialized = false;
                     _initializationError = $"Failed to open controller with ID {ID}. Device not found or unavailable.";
                 }
             }
@@ -267,21 +256,17 @@ namespace MicrosupportController
                 _isInitialized = false;
                 _initializationError = $"Exception during initialization: {ex.Message}";
                 hController = 0xFFFFFFFF;
+                Debug.WriteLine($"[Microsupport] Exception during initialization for ID {ID}: {ex.Message}");
             }
         }
 
         #endregion
 
-        #region public methods
+        #region Basic control methods
 
         /// <summary>
         /// Initiates the origin start process for the specified axis with the given action.
         /// </summary>
-        /// <param name="axis">The axis identifier for which the origin start process is initiated.</param>
-        /// <param name="action">The action to perform during the origin start process. The valid range and meaning of this value depend on
-        /// the device's specifications.</param>
-        /// <returns>A status code indicating the result of the operation. Returns a device-specific success code if the
-        /// operation succeeds, or <see cref="Hpmcstd.MCSD_ERROR_NO_DEVICE"/> if no valid device is connected.</returns>
         public uint StartOrigin(ushort axis, ushort action)
         {
             if (this.IsValid)
@@ -298,8 +283,7 @@ namespace MicrosupportController
         /// <remarks>This method sets the speed for the X, Y, and Z axes to their maximum values before
         /// starting the homing process. It then waits until all axes have completed their homing operation. The method
         /// is asynchronous and will not block the calling thread while waiting for the operation to complete.</remarks>
-        /// <returns>A task that represents the asynchronous operation. The task completes when the homing process for all axes
-        /// is finished.</returns>
+
         public async Task StartOriginAsync()
         {
             /// Set the speed for each axis to the maximum speed.
@@ -320,6 +304,10 @@ namespace MicrosupportController
             }
         }
 
+        /// <summary>
+        /// This method centers all axes (X, Y, Z) of the motion controller by moving them to the midpoint of their
+        /// </summary>
+        /// <returns></returns>
         public async Task StartCenter()
         {
             /// Set the speed for each axis to the maximum speed.
@@ -343,31 +331,17 @@ namespace MicrosupportController
                 await Task.Delay(100);
             }
         }
+        #endregion
 
-        /// Enable or disable smoothing mode for the motion controller.
-        public void SetSmoothMode(bool enable)
-        {
-            isSmoothingEnabled = enable;
-        }
-
-        /// Set acceleration time for smooth motion.
-        public void SetAccelerationTime(int timeMs)
-        {
-            accelerationTimeMs = Math.Max(1, Math.Min(timeMs, 1000)); // Ensure the time is between 1 and 1000 ms.
-        }
-
+        #region Utility methods
         /// <summary>
         /// Waits asynchronously until the operation is no longer busy.
         /// </summary>
-        /// <remarks>This method repeatedly checks the <see cref="IsBusy"/> state and delays execution  in
-        /// 10-millisecond intervals until the operation completes. Use this method to  ensure that subsequent actions
-        /// occur only after the busy state has ended.</remarks>
-        /// <returns>A task that represents the asynchronous wait operation.</returns>
         public async Task Wait()
-        {
+       {
             while (IsBusy())
                 await Task.Delay(10);
-        }
+       }
 
         /// <summary>
         /// terminate the motion controller. This method closes the device and releases any resources associated with it.
@@ -375,15 +349,13 @@ namespace MicrosupportController
         public void Terminate()
         {
             if (this.IsValid)
+                /// McsdClose(hDevice) function closes the device and releases any associated resources.
                 Hpmcstd.McsdClose(hController);
         }
 
         /// <summary>
         /// Convert encoder value to um value.
         /// </summary>
-        /// <param name="axis"></param>
-        /// <param name="enc"></param>
-        /// <returns></returns>
         public int Enc2um(AXIS axis, double enc)
         {
             switch (axis)
@@ -402,9 +374,6 @@ namespace MicrosupportController
         /// <summary>
         /// Converts a distance in micrometers (µm) to encoder units for the specified axis.
         /// </summary>
-        /// <param name="axis"></param>
-        /// <param name="um"></param>
-   
         public int Um2enc(AXIS axis, double um)
         {
             switch (axis)
@@ -430,11 +399,14 @@ namespace MicrosupportController
 
             if (this.IsValid)
             {
+                /// Initialize the position array to hold the positions of all axes.
                 pos = new int[MC104_MAX_AXES];
                 for (ushort i = 0; i < MC104_MAX_AXES; i++)
                 {
+                    /// Declare a variable to hold the counter data for the current axis.
                     uint dwData;
-                    /// the keyword "out" here is used to indicate that the dwData variable is passed by reference, allowing the method to modify its value.
+                    /// McsdGetCounter(hDevice, wAxis, wCounter, out pwData) function retrieves the current counter value for the specified axis.
+                    //  wCounter: 0 for internal counter
                     uint err = Hpmcstd.McsdGetCounter(hController, i, 0, out dwData);
                     /// This bitwise operation on a 32-bit unsigned integer is for extracting the position data. The internal counter is 28-bits, hence the upper 4 bits are not used.
                     if ((dwData & 0x08000000) == 0x08000000)
@@ -446,40 +418,7 @@ namespace MicrosupportController
                     pos[i] = (int)dwData;
                 }
             }
-
             return pos;
-        }
-
-        /// <summary>
-        /// Obtains the current position (um) of the controller in encoder units.
-        /// </summary>
-        /// <return> An array of integers, where each element represents the position in micrometers </return>
-        public double[] GetPositions()
-        {
-            double[] posum = null;
-            int[] pos = GetPositionsEnc();
-            if( pos != null )
-            {
-                posum = new double[3];
-                posum[0] = pos[1] * RESOLUTIONS_AXIS_X;
-                posum[1] = pos[0] * RESOLUTIONS_AXIS_Y;
-                posum[2] = pos[2] * RESOLUTIONS_AXIS_Z;
-            }    
-            return posum;
-        }
-
-        public double[] GetPositionsFromCenter()
-        {
-            double[] posAbs = GetPositions();
-            double[] posFC = null;
-            if (posAbs != null)
-            {
-                posFC = new double[3];
-                posFC[0] = posAbs[0] - RANGE_X / 2; // X軸の中心からの距離
-                posFC[1] = posAbs[1] - RANGE_Y / 2; // Y軸の中心からの距離
-                posFC[2] = - posAbs[2] + RANGE_Z / 2; // Z軸の中心からの距離
-            }
-                return posFC;
         }
 
         /// <summary>
@@ -494,7 +433,7 @@ namespace MicrosupportController
                 case AXIS.X:
                     return pos[1];
                 case AXIS.Y:
-                    return pos[0];  
+                    return pos[0];
                 case AXIS.Z:
                     return pos[2];
                 default:
@@ -503,28 +442,47 @@ namespace MicrosupportController
         }
 
         /// <summary>
-        /// Retrieves the current position of the specified axis in micrometers.
+        /// Obtains the current position (um) of the controller in encoder units.
         /// </summary>
-        /// <param name="axis"></param>
-        /// <returns>The position of the specified axis, expressed in micrometers.</returns>
-        /// <returns>The position of the specified axis, expressed in micrometers.</returns>
-        public double GetPosition(AXIS axis)
+        /// <return> An array of integers, where each element represents the position in micrometers </return>
+        public double[] GetPositions()
         {
-            int pos = GetPositionEnc(axis);
-            return Enc2um(axis, pos);
+            /// Position array in micrometers.
+            double[] posum = null;
+
+            int[] pos = GetPositionsEnc();
+
+            /// Convert encoder positions to micrometers for each axis.
+            if (pos != null)
+            {
+                posum = new double[3];
+                posum[0] = Enc2um(AXIS.X, pos[1]);
+                posum[1] = Enc2um(AXIS.Y, pos[0]);
+                posum[2] = Enc2um(AXIS.Z, pos[2]);
+            }
+            return posum;
+        }
+
+        /// <summary>
+        /// Calculates the positions relative to the center of the stoke.
+        /// </summary>
+        public double[] GetPositionsFromCenter()
+        {
+            double[] posAbs = GetPositions();
+            double[] posFromCenter = null;
+            if (posAbs != null)
+            {
+                posFromCenter = new double[3];
+                posFromCenter[0] = posAbs[0] - RANGE_X / 2; // Distance from center of X axis
+                posFromCenter[1] = posAbs[1] - RANGE_Y / 2; // Distance from center of Y axis
+                posFromCenter[2] = - posAbs[2] + RANGE_Z / 2; // Distance from center of Z axis
+            }
+            return posFromCenter;
         }
 
         /// <summary>
         /// Sets the speed for the specified axis in encoder units.
         /// </summary>
-        /// <remarks>The method ensures that the speed is set within the valid range for the specified
-        /// axis. If the device is not valid, the method will return an error code without performing any operation. The
-        /// speed is adjusted internally to ensure that the high speed is not lower than the low speed.</remarks>
-        /// <param name="axis"></param>
-        /// <param name="speed"></param>
-        /// <returns>A status code indicating the result of the operation. Returns <see cref="Hpmcstd.MCSD_ERROR_NO_DEVICE"/> if
-        /// the device is not valid, <see cref="Hpmcstd.MCSD_ERROR_AXIS"/> if the specified axis is invalid, or a
-        /// success code from the underlying hardware API.</returns>
         public uint SetSpeedEnc(AXIS axis, int speed)
         {
             if (this.IsValid)
@@ -708,16 +666,12 @@ namespace MicrosupportController
             return Hpmcstd.MCSD_ERROR_NO_DEVICE;
         }
 
+        #endregion
+
+        #region Advanced motion control methods
         /// <summary>
         /// Starts a jog operation on the specified axis in the given direction.
         /// </summary>
-        /// <remarks>This method initiates a continuous jog movement on the specified axis in the
-        /// specified direction. Ensure that the device is properly initialized and valid before calling this
-        /// method.</remarks>
-        /// <param name="axis">The axis on which to perform the jog operation. Must be one of the defined <see cref="AXIS"/> values.</param>
-        /// <param name="dir">The direction of the jog operation. Must be one of the defined <see cref="DIRECTION"/> values.</param>
-        /// <returns>A status code indicating the result of the operation. Returns a non-zero value if the jog operation starts
-        /// successfully. Returns <see cref="Hpmcstd.MCSD_ERROR_NO_DEVICE"/> if the device is not valid or available.</returns>
         public uint StartJog(AXIS axis, DIRECTION direction)
         {
             if (this.IsValid)
@@ -729,23 +683,25 @@ namespace MicrosupportController
                 switch (axis)
                 {
                     case AXIS.X:
-                        axisCode = MC104_AXIS2;
+                        axisCode = MC104_AXIS2; // X axis is mapped to MC104_AXIS2
                         break;
                     case AXIS.Y:
-                        axisCode = MC104_AXIS1;
+                        axisCode = MC104_AXIS1; // Y axis is mapped to MC104_AXIS1
                         break;
                     case AXIS.Z:
-                        axisCode = MC104_AXIS3;
+                        axisCode = MC104_AXIS3; // Z axis is mapped to MC104_AXIS3
                         break;
                 }
 
                 /// Sets the direction code based on the specified direction.
                 if (direction == DIRECTION.FORWARD)
-                    directionCode = MC104_SCAN_FORWARD;
+                    directionCode = MC104_SCAN_FORWARD; // Jog forward
                 else
                     directionCode = MC104_SCAN_REVERSE;
 
-                /// Initiates the jog operation on the specified axis in the specified direction.
+                /// McsdDriveStart(hDevice, wAxis, wDrive, dwPulse) starts jog motion as directionCode is set to SCAN
+                //  INDEX PULSE DRIVE - move by specified pulse count
+                //  SCAN  DRIVE  - move continuously until a stop command is received
                 return Hpmcstd.McsdDriveStart(hController, axisCode, directionCode, 0xFFFFFF);
             }
 
@@ -753,60 +709,9 @@ namespace MicrosupportController
         }
 
         /// <summary>
-        /// Starts a jog operation on the specified axis in the given direction and waits for the operation to complete.
-        /// </summary>
-        /// <remarks>This method initiates a jog operation on the specified axis and direction using the
-        /// controller.  If the controller is not valid, the method will handle the error internally and still wait
-        /// asynchronously.</remarks>
-        /// <param name="axis">The axis on which to perform the jog operation. Must be one of the defined <see cref="AXIS"/> values.</param>
-        /// <param name="dir">The direction of the jog operation. Must be one of the defined <see cref="DIRECTION"/> values.</param>
-        /// <returns>A task that represents the asynchronous operation.</returns>
-        public async Task StartJogWait(AXIS axis, DIRECTION direction)
-        {
-            if (this.IsValid)
-            {
-                ushort axisCode = 0;
-                ushort directionCode;
-                switch (axis)
-                {
-                    case AXIS.X:
-                        axisCode = MC104_AXIS2;
-                        break;
-                    case AXIS.Y:
-                        axisCode = MC104_AXIS1;
-                        break;
-                    case AXIS.Z:
-                        axisCode = MC104_AXIS3;
-                        break;
-                }
-
-                if (direction == DIRECTION.FORWARD)
-                    directionCode = MC104_SCAN_FORWARD;
-                else
-                    directionCode = MC104_SCAN_REVERSE;
-
-                Hpmcstd.McsdDriveStart(hController, axisCode, directionCode, 0xFFFFFF);
-
-                await Wait();
-                return;
-                //return Hpmcstd.McsdDriveStart(hController, _axis, _dir, 0xFFFFFF);
-            }
-
-            await Wait();
-            return;
-
-            //return Hpmcstd.MCSD_ERROR_NO_DEVICE;
-        }
-
-        /// <summary>
         /// Starts an incremental encoder movement on the specified axis in the given direction for a specified
         /// distance.
         /// </summary>
-        /// <param name="axis">The axis on which to perform the movement. Must be one of the defined <see cref="AXIS"/> values.</param>
-        /// <param name="dir">The direction of the movement. Must be one of the defined <see cref="DIRECTION"/> values.</param>
-        /// <param name="distance">The distance to move, in encoder units. Must be a positive value.</param>
-        /// <returns>A status code indicating the result of the operation. Returns a non-zero value if the operation is
-        /// successful,  or <see cref="Hpmcstd.MCSD_ERROR_NO_DEVICE"/> if the device is not valid or available.</returns>
         public uint StartIncEnc(AXIS axis, DIRECTION direction, uint distance)
         {
             if (this.IsValid)
@@ -816,13 +721,13 @@ namespace MicrosupportController
                 switch (axis)
                 {
                     case AXIS.X:
-                        axisCode = MC104_AXIS2;
+                        axisCode = MC104_AXIS2; // X axis is mapped to MC104_AXIS2
                         break;
                     case AXIS.Y:
-                        axisCode = MC104_AXIS1;
+                        axisCode = MC104_AXIS1; // Y axis is mapped to MC104_AXIS1
                         break;
                     case AXIS.Z:
-                        axisCode = MC104_AXIS3;
+                        axisCode = MC104_AXIS3; // Z axis is mapped to MC104_AXIS3
                         break;
                 }
 
@@ -831,6 +736,7 @@ namespace MicrosupportController
                 else
                     directionCode = MC104_INDEX_REVERSE;
 
+                /// McsdDriveStart(hDevice, wAxis, wDrive, dwPulse) starts incremental motion as directionCode is set to INDEX
                 return Hpmcstd.McsdDriveStart(hController, axisCode, directionCode, distance);
             }
             return Hpmcstd.MCSD_ERROR_NO_DEVICE;
@@ -839,12 +745,6 @@ namespace MicrosupportController
         /// <summary>
         /// Starts an incremental movement on the specified axis in the given direction for the specified distance.
         /// </summary>
-        /// <remarks>The method converts the specified distance from micrometers to encoder units and
-        /// initiates the movement.</remarks>
-        /// <param name="axis">The axis on which the movement will be performed.</param>
-        /// <param name="dir">The direction of the movement.</param>
-        /// <param name="umdistance">The distance to move, in micrometers.</param>
-        /// <returns>The distance to be moved, in encoder units, as an unsigned integer.</returns>
         public uint StartInc(AXIS axis, DIRECTION direction, double umDistance)
         {
             uint distance = (uint)Um2enc(axis, umDistance);
@@ -854,13 +754,6 @@ namespace MicrosupportController
         /// <summary>
         /// Starts the absolute encoder movement for the specified axis to reach the target position.
         /// </summary>
-        /// <remarks>The method calculates the distance and direction required to move the specified axis
-        /// to the target position and initiates the movement. The direction is determined based on the sign of the
-        /// distance.</remarks>
-        /// <param name="axis">The axis to move. Must be one of the defined <see cref="AXIS"/> values.</param>
-        /// <param name="targetPosition">The target position to move the axis to, specified in encoder units.</param>
-        /// <returns>A status code indicating the result of the operation. Returns a non-zero value if the operation is
-        /// successful, or <see cref="Hpmcstd.MCSD_ERROR_NO_DEVICE"/> if the device is not valid or initialized.</returns>
         public uint StartAbsEnc(AXIS axis, int targetPosition)
         {
             if (this.IsValid)
@@ -869,13 +762,13 @@ namespace MicrosupportController
                 switch (axis)
                 {
                     case AXIS.X:
-                        axisCode = MC104_AXIS2;
+                        axisCode = MC104_AXIS2; // X axis is mapped to MC104_AXIS2
                         break;
                     case AXIS.Y:
-                        axisCode = MC104_AXIS1;
+                        axisCode = MC104_AXIS1; // Y axis is mapped to MC104_AXIS1
                         break;
                     case AXIS.Z:
-                        axisCode = MC104_AXIS3;
+                        axisCode = MC104_AXIS3; // Z axis is mapped to MC104_AXIS3
                         break;
                 }
 
@@ -1018,9 +911,11 @@ namespace MicrosupportController
         public async Task StepIncAsync(double xUm, double yUm, double zUm)
         {
             StepInc(xUm, yUm, zUm);
-            await Wait(); // 等待所有轴移动完成
+            await Wait(); // Wait for the movement to complete
         }
+        #endregion
 
+        #region Status and Error Handling
         /// <summary>
         /// Determines whether the axis is currently busy.
         /// </summary>
@@ -1030,7 +925,7 @@ namespace MicrosupportController
         public bool IsBusy()
         {
             ushort status;
-            /// Calls the DLL function McsdGetAxisBusy to check if the axis is busy.
+            /// Calls McsdGetAxisBusy(hDevice, pwStatus) to check if the axis is busy.
             Hpmcstd.McsdGetAxisBusy(hController, out status);
 
             /// Check if the result indicates an error.
@@ -1040,7 +935,7 @@ namespace MicrosupportController
             /// Check if the status indicates that the axis is busy.
             return ((status & 0x0F) != 0);
         }
-        
+
         /// <summary>
         /// Determines whether the specified axis is currently busy performing an operation.
         /// </summary>
@@ -1070,36 +965,10 @@ namespace MicrosupportController
         }
 
         /// <summary>
-        /// Retrieves the status of the controller.
+        /// Retrieves the error message corresponding to the specified error code.
         /// </summary>
+        /// <param name="errorCode"></param>
         /// <returns></returns>
-        public ushort GetStatus()
-        {
-            ushort status;
-            Hpmcstd.McsdGetAxisBusy(hController, out status);
-
-            return status;
-        }
-
-        /// <summary>
-        /// Retrieves the error message associated with the current instance.
-        /// </summary>
-        /// <returns>A <see cref="string"/> containing the error message. Returns an empty string if no error message is set.</returns>
-        public string GetError()
-        {
-            return comment;
-        }
-
-        /// <summary>
-        /// Retrieves a descriptive error message corresponding to the specified error code.
-        /// </summary>
-        /// <remarks>This method maps predefined error codes from the <see cref="Hpmcstd"/> class to their
-        /// respective descriptive messages. If the provided error code does not match any known value, the method
-        /// returns an empty string.</remarks>
-        /// <param name="errorCode">The error code for which to retrieve the corresponding error message. Must be a valid error code defined in
-        /// the <see cref="Hpmcstd"/> class.</param>
-        /// <returns>A string containing the error message associated with the specified <paramref name="errorCode"/>. If the
-        /// error code is not recognized, an empty string is returned.</returns>
         public string GetError(uint errorCode)
         {
             switch (errorCode)
@@ -1157,26 +1026,17 @@ namespace MicrosupportController
         }
 
         /// <summary>
-        /// Retrieves the end status of the specified axis, indicating various stop or error conditions.
+        /// Retrieves the end status for the specified axis.
         /// </summary>
-        /// <remarks>This method queries the status of the specified axis and interprets the end
-        /// conditions based on the status flags. The returned string provides a human-readable description of the
-        /// conditions that caused the axis to stop.</remarks>
-        /// <param name="axis">The axis for which to retrieve the end status. Must be one of the defined <see cref="AXIS"/> values.</param>
-        /// <returns>A string describing the end status of the specified axis. The string may include one or more of the
-        /// following conditions: <list type="bullet"> <item><description>"Data Error End" - Indicates a data error
-        /// condition.</description></item> <item><description>"Alarm Signal End" - Indicates an alarm signal
-        /// condition.</description></item> <item><description>"Emergency Stop Command End" - Indicates an emergency
-        /// stop command was issued.</description></item> <item><description>"Slow Down Stop Command End" - Indicates a
-        /// slow down stop command was issued.</description></item> <item><description>"Emergency Stop Signal End" -
-        /// Indicates an emergency stop signal was received.</description></item> <item><description>"Org Error End" -
-        /// Indicates an origin error condition.</description></item> <item><description>"Limit Signal End" - Indicates
-        /// a limit signal condition.</description></item> </list> If no conditions are met, the returned string will be
-        /// empty.</returns>
+        /// <param name="axis"></param>
+        /// <returns></returns>
         public string GetAxisEndStatus(AXIS axis)
         {
+            /// Create a new instance of the MCSDSTATUS structure to hold the status information.
             Hpmcstd.MCSDSTATUS status = new Hpmcstd.MCSDSTATUS();
             uint result;
+
+            /// Determine which axis to query and retrieve its status.
             switch (axis)
             {
                 case AXIS.X:
@@ -1212,15 +1072,10 @@ namespace MicrosupportController
         }
 
         /// <summary>
-        /// Retrieves the combined end status of all axes based on the provided status code.
+        /// Retrieves the end status for all axes based on the provided status code.
         /// </summary>
-        /// <remarks>This method checks specific bits in the <paramref name="status"/> parameter to
-        /// determine which axes are active and retrieves their respective end statuses using the
-        /// <c>GetAxisEndStatus</c> method.</remarks>
-        /// <param name="status">A 32-bit unsigned integer representing the status code. Each bit in the status code corresponds to a
-        /// specific axis, where bits 8, 9, and 10 indicate the X, Y, and Z axes, respectively.</param>
-        /// <returns>A string containing the end status of the axes that are active in the provided status code. The statuses are
-        /// concatenated with a space separator. Returns an empty string if no axes are active.</returns>
+        /// <param name="status"></param>
+        /// <returns></returns>
         public string GetEndStatus(uint status)
         {
             string allStatus = "";
