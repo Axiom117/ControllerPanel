@@ -665,8 +665,8 @@ namespace MC104.server
 
                         // Execute relative movements concurrently
                         await Task.WhenAll(
-                            controller1.StepIncAsync(deltaX1, deltaY1, deltaZ1),
-                            controller2.StepIncAsync(deltaX2, deltaY2, deltaZ2)
+                            controller1.StartIncBufferAsync(deltaX1, deltaY1, deltaZ1),
+                            controller2.StartIncBufferAsync(deltaX2, deltaY2, deltaZ2)
                         );
 
                         var executionTime = (DateTime.Now - startTime).TotalMilliseconds;
@@ -760,8 +760,8 @@ namespace MC104.server
                     NotifyClientConnection($"Applying position correction: {id1} error={totalError1:F2}μm, {id2} error={totalError2:F2}μm");
 
                     await Task.WhenAll(
-                        controller1.StepIncAsync(errorX1, errorY1, errorZ1),
-                        controller2.StepIncAsync(errorX2, errorY2, errorZ2)
+                        controller1.StartIncBufferAsync(errorX1, errorY1, errorZ1),
+                        controller2.StartIncBufferAsync(errorX2, errorY2, errorZ2)
                     );
 
                     // Return actual corrected positions

@@ -109,6 +109,8 @@ namespace MicrosupportController
             REVERSE
         }
 
+        private static readonly AXIS[] AllAxes = new AXIS[] { AXIS.X, AXIS.Y, AXIS.Z };
+
         /// Max speed (pulse/sec)
         private const int MAX_SPEED = 50000; // X axis, Y axis, Z axis
         private const double MAX_UM_SPEED = MAX_SPEED * RESOLUTIONS_AXIS_X; // X axis, Y axis, Z axis
@@ -320,9 +322,9 @@ namespace MicrosupportController
             double centerY = RANGE_Y / 2;
             double centerZ = RANGE_Z / 2;
             /// Move each axis to its center position.
-            StartAbs(AXIS.X, centerX);
-            StartAbs(AXIS.Y, centerY);
-            StartAbs(AXIS.Z, centerZ);
+            StartIncAbs(AXIS.X, centerX);
+            StartIncAbs(AXIS.Y, centerY);
+            StartIncAbs(AXIS.Z, centerZ);
 
             /// Wait for the centering process to complete.
             while (IsBusy())
@@ -333,24 +335,22 @@ namespace MicrosupportController
         }
         #endregion
 
-        #region Utility methods
+        #region Position and speed setting methods
         /// <summary>
-        /// Waits asynchronously until the operation is no longer busy.
+        /// Executes an action for all axes and returns the first error encountered.
         /// </summary>
-        public async Task Wait()
-       {
-            while (IsBusy())
-                await Task.Delay(10);
-       }
-
-        /// <summary>
-        /// terminate the motion controller. This method closes the device and releases any resources associated with it.
-        /// </summary>
-        public void Terminate()
+        private uint ForEachAxis(Func<AXIS, uint> action)
         {
-            if (this.IsValid)
-                /// McsdClose(hDevice) function closes the device and releases any associated resources.
-                Hpmcstd.McsdClose(hController);
+            if (!IsValid) return Hpmcstd.MCSD_ERROR_NO_DEVICE;
+
+            foreach (var axis in AllAxes)
+            {
+                var result = action(axis);
+                if (result != Hpmcstd.MCSD_ERROR_SUCCESS)
+                    return result;
+            }
+
+            return Hpmcstd.MCSD_ERROR_SUCCESS;
         }
 
         /// <summary>
@@ -501,17 +501,29 @@ namespace MicrosupportController
                 /// dwHighSpeed: max target speed (in PPS)
                 speedData.dwHighSpeed = (uint)Math.Abs(speed / irange);
 
-                speedData.dwLowSpeed = (uint)Math.Abs(1000 / irange); // dwLowSpeed: self-starting speed (in PPS)
-                speedData.dwRate = new uint[] { 50, 8191, 8191 }; // Acceleration rate for each segment of motion (multi-stage ramp-up).
-                speedData.dwRateChgPnt = new uint[] { 8191, 8191 }; // Points where the rate changes. Use 8191 means a simple trapezoidal drive.
-                speedData.dwScw = new uint[] { 1024, 1024 }; // S-curve weighting factor.
-
-                /// rear pulse setting, 0 means no extra delay 
-                speedData.dwRearPulse = 0;
+                /// dwLowSpeed: min target speed (in PPS)
+                uint lowSpeedData = (uint)(speedData.dwHighSpeed * 0.20); // 20% of max speed
+                speedData.dwLowSpeed = lowSpeedData;
+                //  speedData.dwLowSpeed = (uint)Math.Abs(1000 / irange);
 
                 /// Safety check: ensures that the max speed is not lower than the min speed.
                 if (speedData.dwHighSpeed < speedData.dwLowSpeed)
                     speedData.dwHighSpeed = speedData.dwLowSpeed;
+
+                speedData.dwRate = new uint[] { 1000, 8191, 8191 }; // Acceleration rate for each segment of motion (multi-stage ramp-up).
+                speedData.dwRateChgPnt = new uint[] { 8191, 8191 }; // Points where the rate changes. Use 8191 means a simple trapezoidal drive.
+
+                /// Compute S-curve weighting factor based on speed difference.
+                uint speedDiff = speedData.dwHighSpeed - speedData.dwLowSpeed;
+                uint scwValue = (uint)(speedDiff / 2.0); 
+
+                if (scwValue > 4095) scwValue = 4095; // Cap the value to a maximum of 4095.
+                speedData.dwScw = new uint[] { scwValue, scwValue }; // S-curve weighting factor.
+                //  speedData.dwScw = new uint[] { 1024, 1024 }; // S-curve weighting factor.
+
+
+                /// rear pulse setting, 0 means no extra delay 
+                speedData.dwRearPulse = 0;
 
                 /// Set speed for the selected axis.
                 switch (axis)
@@ -535,11 +547,6 @@ namespace MicrosupportController
         /// <summary>
         /// Sets the speed of the specified axis in um/sec.
         /// </summary>
-        /// <remarks>The speed is converted to encoder units internally before being applied to the axis.
-        /// Ensure that the provided speed is appropriate for the axis configuration.</remarks>
-        /// <param name="axis"></param>
-        /// <param name="speed"></param>
-        /// <returns>A status code indicating the result of the operation.</returns>
         public uint SetSpeed(AXIS axis, double speed)
         {
             return SetSpeedEnc(axis, Um2enc(axis, speed));
@@ -548,17 +555,13 @@ namespace MicrosupportController
         /// <summary>
         /// Sets the movement speed for all axes to the specified value.
         /// </summary>
-        /// <remarks>This method applies the same speed to all axes (X, Y, and Z).  If the operation fails
-        /// for any axis, the method stops and returns the corresponding error code.</remarks>
-        /// <param name="speed"></param>
-        /// <returns>A status code indicating the result of the operation.</returns>
         public uint SetSpeedAll(double speed = SPEED_DEFAULT)
         {
             uint[] results = new uint[3];
 
-            results[0] = SetSpeedEnc(AXIS.X, Um2enc(AXIS.X, speed));
-            results[1] = SetSpeedEnc(AXIS.Y, Um2enc(AXIS.Y, speed));
-            results[2] = SetSpeedEnc(AXIS.Z, Um2enc(AXIS.Z, speed));
+            results[0] = SetSpeed(AXIS.X, speed);
+            results[1] = SetSpeed(AXIS.Y, speed);
+            results[2] = SetSpeed(AXIS.Z, speed);
 
             /// Check if all axes were set successfully.
             foreach (uint result in results)
@@ -573,31 +576,35 @@ namespace MicrosupportController
         }
 
         /// <summary>
+        /// Stops the specified axis by performing a deceleration stop.
+        /// </summary>
+        public uint StopAxis(AXIS axis)
+        {
+            if (this.IsValid)
+            {
+                switch (axis)
+                {
+                    case AXIS.X:
+                        return Hpmcstd.McsdDriveStop(hController, MC104_AXIS2, 0); // Deceleration stop
+                    case AXIS.Y:
+                        return Hpmcstd.McsdDriveStop(hController, MC104_AXIS1, 0);
+                    case AXIS.Z:
+                        return Hpmcstd.McsdDriveStop(hController, MC104_AXIS3, 0);
+                    default:
+                        return Hpmcstd.MCSD_ERROR_AXIS;
+                }
+            }
+            return Hpmcstd.MCSD_ERROR_NO_DEVICE;
+        }
+
+        /// <summary>
         /// Stops the motion of all axes and returns the result of the operation.
         /// </summary>
-        public uint Stop()
-        {
-            AXIS[] axes = new AXIS[] { AXIS.X, AXIS.Y, AXIS.Z }; 
-            /// Stop all axes by calling the StopAxis method for each axis.
-            
-            foreach(AXIS axis in axes)
-            {
-                uint result = StopAxis(axis);
-                if (result != Hpmcstd.MCSD_ERROR_SUCCESS)
-                    return result; // Return the first error encountered.
-            }
-
-            return Hpmcstd.MCSD_ERROR_SUCCESS;
-        }
+        public uint Stop() => ForEachAxis(StopAxis);
 
         /// <summary>
         /// Stops the specified axis immediately in an emergency situation.
         /// </summary>
-        /// <remarks>This method performs an emergency stop on the specified axis by decelerating it to a halt.</remarks>
-        /// <param name="axis">The axis to stop. Must be one of the defined <see cref="AXIS"/> values.</param>
-        /// <returns>A status code indicating the result of the operation.  Returns a success code if the axis was stopped
-        /// successfully.  Returns <see cref="Hpmcstd.MCSD_ERROR_AXIS"/> if the specified axis is invalid,  or <see
-        /// cref="Hpmcstd.MCSD_ERROR_NO_DEVICE"/> if the controller is not valid.</returns>
         public uint StopAxisEmergency(AXIS axis)
         {
             if (this.IsValid)
@@ -605,11 +612,11 @@ namespace MicrosupportController
                 switch (axis)
                 {
                     case AXIS.X:
-                        return Hpmcstd.McsdDriveStop(hController, MC104_AXIS2, 1); // 減速停止
+                        return Hpmcstd.McsdDriveStop(hController, MC104_AXIS2, 1); // Deceleration stop
                     case AXIS.Y:
-                        return Hpmcstd.McsdDriveStop(hController, MC104_AXIS1, 1); // 減速停止
+                        return Hpmcstd.McsdDriveStop(hController, MC104_AXIS1, 1);
                     case AXIS.Z:
-                        return Hpmcstd.McsdDriveStop(hController, MC104_AXIS3, 1); // 減速停止
+                        return Hpmcstd.McsdDriveStop(hController, MC104_AXIS3, 1);
                     default:
                         return Hpmcstd.MCSD_ERROR_AXIS;
                 }
@@ -620,55 +627,11 @@ namespace MicrosupportController
         /// <summary>
         /// Stops the emergency operation for all axes and returns the result of the operation.
         /// </summary>
-        /// <remarks>This method attempts to stop the emergency operation for the X, Y, and Z axes
-        /// sequentially.  If an error occurs while stopping any axis, the method returns the corresponding error code 
-        /// without attempting to stop the remaining axes.</remarks>
-        /// <returns>A status code indicating the result of the operation.  Returns <see cref="Hpmcstd.MCSD_ERROR_SUCCESS"/> if
-        /// all axes are successfully stopped;  otherwise, returns the error code of the first axis that failed to stop.</returns>
-        public uint StopEmergency()
-        {
-            AXIS[] axes = new AXIS[] { AXIS.X, AXIS.Y, AXIS.Z };
-            
-            foreach(AXIS axis in axes)
-            {
-                uint result = StopAxisEmergency(axis);
-                if (result != Hpmcstd.MCSD_ERROR_SUCCESS)
-                    return result; // Return the first error encountered.
-            }
-
-            return Hpmcstd.MCSD_ERROR_SUCCESS;
-        }
-
-        /// <summary>
-        /// Stops the specified axis by performing a deceleration stop.
-        /// </summary>
-        /// <remarks>This method requires the controller to be in a valid state. If the controller is not
-        /// valid,  the method returns an error code indicating that no device is available.</remarks>
-        /// <param name="axis">The axis to stop. Must be one of the defined <see cref="AXIS"/> values.</param>
-        /// <returns>A status code indicating the result of the operation.  Returns a success code if the axis was stopped
-        /// successfully, or an error code if the operation failed.</returns>
-        public uint StopAxis(AXIS axis)
-        {
-            if (this.IsValid)
-            {
-                switch (axis)
-                {
-                    case AXIS.X:
-                        return Hpmcstd.McsdDriveStop(hController, MC104_AXIS2, 0); // 減速停止
-                    case AXIS.Y:
-                        return Hpmcstd.McsdDriveStop(hController, MC104_AXIS1, 0); // 減速停止
-                    case AXIS.Z:
-                        return Hpmcstd.McsdDriveStop(hController, MC104_AXIS3, 0); // 減速停止
-                    default:
-                        return Hpmcstd.MCSD_ERROR_AXIS;
-                }
-            }
-            return Hpmcstd.MCSD_ERROR_NO_DEVICE;
-        }
+        public uint StopEmergency() => ForEachAxis(StopAxisEmergency);
 
         #endregion
 
-        #region Advanced motion control methods
+        #region Motion control methods
         /// <summary>
         /// Starts a jog operation on the specified axis in the given direction.
         /// </summary>
@@ -754,7 +717,7 @@ namespace MicrosupportController
         /// <summary>
         /// Starts the absolute encoder movement for the specified axis to reach the target position.
         /// </summary>
-        public uint StartAbsEnc(AXIS axis, int targetPosition)
+        public uint StartIncAbsEnc(AXIS axis, int targetPosition)
         {
             if (this.IsValid)
             {
@@ -791,66 +754,53 @@ namespace MicrosupportController
         /// <summary>
         /// Starts an absolute movement of the specified axis to the given position in micrometer.
         /// </summary>
-        /// <remarks>The position is converted internally to encoder units before initiating the movement.
-        /// Ensure that the axis is properly configured and ready for movement before calling this method.</remarks>
-        /// <param name="axis">The axis to move. Must be a valid axis identifier.</param>
-        /// <param name="targetPosition">The target position for the axis, specified in user-defined units.</param>
-        /// <returns>A status code indicating the result of the operation. A value of 0 typically indicates success.</returns>
-        public uint StartAbs(AXIS axis, double targetPosition)
+        public uint StartIncAbs(AXIS axis, double targetPosition)
         {
             int posEnc = Um2enc(axis, targetPosition);
-            return StartAbsEnc(axis, posEnc);
+            return StartIncAbsEnc(axis, posEnc);
         }
 
         /// <summary>
         /// Moves the X, Y, and Z axes to the specified absolute positions.
         /// </summary>
-        /// <remarks>This method initiates movement for all three axes simultaneously to the specified
-        /// positions. Ensure that the system is properly initialized and ready for movement before calling this
-        /// method.</remarks>
-        /// <param name="x">The target position for the X axis.</param>
-        /// <param name="y">The target position for the Y axis.</param>
-        /// <param name="z">The target position for the Z axis.</param>
-        public void StartAbsAll(double XTarget, double YTarget, double ZTarget)
+        public void StartIncAbsAll(double XTarget, double YTarget, double ZTarget)
         {
-            _ = StartAbs(AXIS.X, XTarget);
-            _ = StartAbs(AXIS.Y, YTarget);
-            _ = StartAbs(AXIS.Z, ZTarget);
+            if (!this.IsValid) return;
+
+            _ = StartIncAbs(AXIS.X, XTarget);
+            _ = StartIncAbs(AXIS.Y, YTarget);
+            _ = StartIncAbs(AXIS.Z, ZTarget);
         }
 
         /// Relative step movement from the current position of the axes. Origin is the center of the range.
         public async Task StartAbsFromCenter(double x, double y, double z)
         {
 
-            StartAbsAll(x + RANGE_X/2, y + RANGE_Y/2, -z + RANGE_Z/2);
+            StartIncAbsAll(x + RANGE_X/2, y + RANGE_Y/2, -z + RANGE_Z/2);
 
             await Wait();
         }
 
         /// <summary>
-        /// 同时移动三个轴指定的脉冲数(增量式)
+        /// Moves the X, Y, and Z axes by the specified number of pulses (incremental). Positive values move forward, negative values move backward.
         /// </summary>
-        /// <param name="xPulse">X轴移动的脉冲数(正值向前,负值向后)</param>
-        /// <param name="yPulse">Y轴移动的脉冲数(正值向前,负值向后)</param>
-        /// <param name="zPulse">Z轴移动的脉冲数(正值向前,负值向后)</param>
-        /// <returns>操作结果代码</returns>
-        public uint StepIncEnc(int xPulse, int yPulse, int zPulse)
+        public uint StartIncBufferEnc(int xPulse, int yPulse, int zPulse)
         {
             if (!this.IsValid)
                 return Hpmcstd.MCSD_ERROR_NO_DEVICE;
 
             try
             {
-                // 计算需要添加多少个命令(只为非零位移的轴添加命令)
+                /// Calculate the number of movement commands to be issued based on non-zero pulse values.
                 int commandCount = (xPulse != 0 ? 1 : 0) + (yPulse != 0 ? 1 : 0) + (zPulse != 0 ? 1 : 0);
 
                 if (commandCount == 0)
-                    return Hpmcstd.MCSD_ERROR_SUCCESS; // 没有需要移动的轴
+                    return Hpmcstd.MCSD_ERROR_SUCCESS;
 
-                // 开始缓冲命令
+                /// Start buffering movement commands.
                 Hpmcstd.McsdStartBuffer(hController, (ushort)commandCount);
 
-                // X轴移动命令
+                /// X axis movement command
                 if (xPulse != 0)
                 {
                     ushort cmd = xPulse > 0 ? (ushort)Hpmcstd.MCSD_PLUS_INDEX_PULSE_DRIVE
@@ -858,7 +808,7 @@ namespace MicrosupportController
                     Hpmcstd.McsdDataWrite(hController, MC104_AXIS2, cmd, (uint)Math.Abs(xPulse));
                 }
 
-                // Y轴移动命令
+                /// Y axis movement command
                 if (yPulse != 0)
                 {
                     ushort cmd = yPulse > 0 ? (ushort)Hpmcstd.MCSD_PLUS_INDEX_PULSE_DRIVE
@@ -866,7 +816,7 @@ namespace MicrosupportController
                     Hpmcstd.McsdDataWrite(hController, MC104_AXIS1, cmd, (uint)Math.Abs(yPulse));
                 }
 
-                // Z轴移动命令
+                /// Z axis movement command
                 if (zPulse != 0)
                 {
                     ushort cmd = zPulse > 0 ? (ushort)Hpmcstd.MCSD_MINUS_INDEX_PULSE_DRIVE
@@ -874,7 +824,7 @@ namespace MicrosupportController
                     Hpmcstd.McsdDataWrite(hController, MC104_AXIS3, cmd, (uint)Math.Abs(zPulse));
                 }
 
-                // 结束缓冲并执行命令
+                /// Execute the buffered movement commands.
                 return Hpmcstd.McsdEndBuffer(hController);
             }
             catch
@@ -886,11 +836,7 @@ namespace MicrosupportController
         /// <summary>
         /// 同时移动三个轴指定的微米数(增量式)
         /// </summary>
-        /// <param name="xUm">X轴移动的微米数(正值向前,负值向后)</param>
-        /// <param name="yUm">Y轴移动的微米数(正值向前,负值向后)</param>
-        /// <param name="zUm">Z轴移动的微米数(正值向前,负值向后)</param>
-        /// <returns>操作结果代码</returns>
-        public uint StepInc(double xUm, double yUm, double zUm)
+        public uint StartIncBuffer(double xUm, double yUm, double zUm)
         {
             // 将微米值转换为脉冲数
             int xPulse = Um2enc(AXIS.X, xUm);
@@ -898,7 +844,7 @@ namespace MicrosupportController
             int zPulse = Um2enc(AXIS.Z, zUm);
 
             // 调用脉冲版本的方法
-            return StepIncEnc(xPulse, yPulse, zPulse);
+            return StartIncBufferEnc(xPulse, yPulse, zPulse);
         }
 
         /// <summary>
@@ -908,20 +854,36 @@ namespace MicrosupportController
         /// <param name="yUm">Y轴移动的微米数</param>
         /// <param name="zUm">Z轴移动的微米数</param>
         /// <returns>异步任务</returns>
-        public async Task StepIncAsync(double xUm, double yUm, double zUm)
+        public async Task StartIncBufferAsync(double xUm, double yUm, double zUm)
         {
-            StepInc(xUm, yUm, zUm);
+            StartIncBuffer(xUm, yUm, zUm);
             await Wait(); // Wait for the movement to complete
         }
         #endregion
 
-        #region Status and Error Handling
+        #region Status Query and Error Handling
+        /// <summary>
+        /// Waits asynchronously until the operation is no longer busy.
+        /// </summary>
+        public async Task Wait()
+        {
+            while (IsBusy())
+                await Task.Delay(10);
+        }
+
+        /// <summary>
+        /// terminate the motion controller. This method closes the device and releases any resources associated with it.
+        /// </summary>
+        public void Terminate()
+        {
+            if (this.IsValid)
+                /// McsdClose(hDevice) function closes the device and releases any associated resources.
+                Hpmcstd.McsdClose(hController);
+        }
+
         /// <summary>
         /// Determines whether the axis is currently busy.
         /// </summary>
-        /// <remarks>This method checks the status of the axis to determine if it is actively engaged in
-        /// an operation.</remarks>
-        /// <returns><see langword="true"/> if the axis is busy; otherwise, <see langword="false"/>.</returns>
         public bool IsBusy()
         {
             ushort status;
