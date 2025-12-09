@@ -158,6 +158,7 @@
     <Compile Include="src\server\ControllerServer_v1.cs" />
     <Compile Include="src\server\MockMatlabServer.cs" />
     <Compile Include="test\BufferTest.cs" />
+    <Compile Include="test\IndexOverrideTest.cs" />
     <Compile Include="test\CPTest.cs" />
     <Compile Include="test\integration_test.cs">
       <SubType>Form</SubType>

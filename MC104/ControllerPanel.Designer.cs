@@ -760,7 +760,6 @@ namespace MC104
             this.plusZ.TabIndex = 11;
             this.plusZ.Text = "▲";
             this.plusZ.UseVisualStyleBackColor = false;
-            this.plusZ.Click += new System.EventHandler(this.plusZ_Click);
             this.plusZ.MouseDown += new System.Windows.Forms.MouseEventHandler(this.buttons_MouseDown);
             this.plusZ.MouseUp += new System.Windows.Forms.MouseEventHandler(this.buttons_MouseUp);
             // 
@@ -778,7 +777,6 @@ namespace MC104
             this.plusY.TabIndex = 10;
             this.plusY.Text = "▶";
             this.plusY.UseVisualStyleBackColor = false;
-            this.plusY.Click += new System.EventHandler(this.plusY_Click);
             this.plusY.MouseDown += new System.Windows.Forms.MouseEventHandler(this.buttons_MouseDown);
             this.plusY.MouseUp += new System.Windows.Forms.MouseEventHandler(this.buttons_MouseUp);
             // 
@@ -830,7 +828,6 @@ namespace MC104
             this.minusX.TabIndex = 0;
             this.minusX.Text = "▲";
             this.minusX.UseVisualStyleBackColor = false;
-            this.minusX.Click += new System.EventHandler(this.minusX_Click);
             this.minusX.MouseDown += new System.Windows.Forms.MouseEventHandler(this.buttons_MouseDown);
             this.minusX.MouseUp += new System.Windows.Forms.MouseEventHandler(this.buttons_MouseUp);
             // 
@@ -848,7 +845,6 @@ namespace MC104
             this.minusY.TabIndex = 9;
             this.minusY.Text = "◀";
             this.minusY.UseVisualStyleBackColor = false;
-            this.minusY.Click += new System.EventHandler(this.minusY_Click);
             this.minusY.MouseDown += new System.Windows.Forms.MouseEventHandler(this.buttons_MouseDown);
             this.minusY.MouseUp += new System.Windows.Forms.MouseEventHandler(this.buttons_MouseUp);
             // 

@@ -53,15 +53,13 @@ namespace MC104
         private ControllerServer_v1 controllerServer;
 
         /// Range of movement for each axis in micrometers (um).
-        private const double RANGE_X = 20000; // X軸の移動範囲 (um)
-        private const double RANGE_Y = 20000; // Y軸の移動範囲 (um)
-        private const double RANGE_Z = 30000; // Z軸の移動範囲 (um)
+        private const double RANGE_X = 20000; // Motion range of X axis (um)
+        private const double RANGE_Y = 20000; // Motion range of Y axis (um)
+        private const double RANGE_Z = 30000; // Motion range of Z axis (um)
 
         #endregion
 
         #region Class Constructor and Initialization
-
-
         public ControllerPanel()
         {
             InitializeComponent();
@@ -133,7 +131,7 @@ namespace MC104
         /// Draw the connected controller icons and labels in the UI. If the user makes a selection, highlight the selected controller icon.
         private void RefreshControllerArea()
         {
-            // 将预置的PictureBox控件统一成列表（确保这几个控件已经在Designer中创建）
+            /// Organize the predefined PictureBox controls into a list (ensure these controls are created in the Designer)
             List<PictureBox> predefinedBoxes = new List<PictureBox> { controller1, controller2, controller3, controller4 };
 
             // If no controllers are detected, show a warning message and hide the PictureBox controls
@@ -225,13 +223,6 @@ namespace MC104
         /// <summary>
         /// Handles periodic updates for the system's controllers and UI elements.
         /// </summary>
-        /// <remarks>This method is triggered by a timer event and performs the following tasks: - Updates
-        /// the speed values displayed in the UI. - Retrieves and displays the current positions of connected
-        /// controllers. - Calculates and displays relative positions and angles for paired controllers. - Updates the
-        /// status of controllers and displays error messages if any controller is not found or decoupled.  The method
-        /// assumes that all controllers and UI elements are properly initialized and accessible.</remarks>
-        /// <param name="sender">The source of the event, typically the timer triggering the update.</param>
-        /// <param name="e">The event data associated with the timer event.</param>
         private void TickTimerEvent(object sender, EventArgs e)
         {
             RefreshControllerArea();
@@ -244,10 +235,11 @@ namespace MC104
                 /// Check if the controller is present and update its status.
                 if (Microsupport.controllers.ContainsKey($"MC{i + 1}"))
                 {
+                    /// Get the controller instance.
                     var controller = Microsupport.controllers[$"MC{i + 1}"];
+                    /// Terminate the controller if it is not connected.
                     if (controller == null || !controller.IsConnected())
                     {
-                        /// Terminate the controller if it is not connected.
                         Microsupport.controllers[$"MC{i + 1}"].Terminate();
                         /// Remove the controller from the dictionary.
                         Microsupport.controllers.Remove($"MC{i + 1}");
@@ -281,6 +273,9 @@ namespace MC104
             }
         }
 
+        /// <summary>
+        /// Attempts to establish a connection to the specified controller using its mapping information.
+        /// </summary>
         private void TryConnectController(int controllerId)
         {
             try
@@ -340,40 +335,12 @@ namespace MC104
             minusZ.Text = "▼";
         }
 
-        private void minusX_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void plusZ_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void plusY_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void minusY_Click(object sender, EventArgs e)
-        {
-
-        }
-
         /// <summary>
         /// Determines the axis and direction based on the button that triggered the event.
         /// </summary>
-        /// <remarks>The method maps specific button names to corresponding axis and direction values. 
-        /// Ensure that the <paramref name="sender"/> is a <see cref="Button"/> with a valid name  corresponding to one
-        /// of the predefined mappings.</remarks>
-        /// <param name="sender">The object that triggered the event, expected to be a <see cref="Button"/>.</param>
-        /// <param name="axis">When the method returns, contains the axis associated with the button. This parameter is passed by
-        /// reference.</param>
-        /// <param name="dir">When the method returns, contains the direction associated with the button. This parameter is passed by
-        /// reference.</param>
         private void GetAxisDirection(object sender, ref Microsupport.AXIS axis, ref Microsupport.DIRECTION direction)
         {
-            /// 
+            /// Get the direction and axis based on the button name.
             Button button = (Button)sender;
             switch (button.Name)
             {
@@ -402,23 +369,18 @@ namespace MC104
         /// Handles the <see cref="MouseEventArgs"/> for mouse down events on control buttons,  initiating movement or
         /// jogging operations for the specified axis and direction.
         /// </summary>
-        /// <remarks>This method determines the axis and direction based on the sender control, sets the
-        /// speed for the motion controllers,  and initiates either a continuous jog or a relative movement operation
-        /// depending on the selected mode. The operation is performed asynchronously to ensure
-        /// responsiveness.</remarks>
-        /// <param name="sender">The source of the event, typically a button control.</param>
-        /// <param name="e">The <see cref="MouseEventArgs"/> containing event data, such as mouse button state.</param>
         private async void buttons_MouseDown(object sender, MouseEventArgs e)
         {
             Microsupport.AXIS axis = 0;
             Microsupport.DIRECTION direction = 0;
 
-            // Obtain the axis and direction of the button clicked.
+            /// Obtain the axis and direction of the button clicked.
             GetAxisDirection(sender, ref axis, ref direction);
 
-            // Obtain the speed value from the trackBar.
+            /// Obtain the speed value from the trackBar.
             int speedJog = GetSpeed();
 
+            /// Set the speed for the specified axis.
             Microsupport.controllers[selectedController].SetSpeed(axis, speedJog);
 
             // If jog mode is selected, start the jog operation.
@@ -436,11 +398,6 @@ namespace MC104
         /// <summary>
         /// Handles the MouseUp event only for job mode, stopping the motion of the specified axis.
         /// </summary>
-        /// <remarks>This method stops the motion of an axis when the associated button is released,
-        /// provided that <see cref="radioButton1"/> is checked. The axis and direction are determined based on the
-        /// button that triggered the event.</remarks>
-        /// <param name="sender">The button control that triggered the event.</param>
-        /// <param name="e">The mouse event data associated with the MouseUp event.</param>
         private void buttons_MouseUp(object sender, MouseEventArgs e)
         {
             if (radioButton1.Checked)

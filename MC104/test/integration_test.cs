@@ -28,7 +28,6 @@ namespace MC104.test
         private NumericUpDown moveXInput;
         private NumericUpDown moveYInput;
         private NumericUpDown moveZInput;
-        private ComboBox controllerIdCombo;
         private TextBox id1Input;
         private TextBox id2Input;
 
@@ -73,8 +72,9 @@ namespace MC104.test
                 Text = "Controller Server & PathPlanner Test",
                 Location = new Point(10, 40),
                 Size = new Size(this.ClientSize.Width - 20, this.ClientSize.Height - 50),
-                Anchor = AnchorStyles.Left | AnchorStyles.Right
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             };
+            this.Controls.Add(testGroupBox); // Add GroupBox to form's controls first
 
             // Server control panel
             Panel serverPanel = new Panel
@@ -251,7 +251,7 @@ namespace MC104.test
 
             commandPanel.Controls.AddRange(new Control[]
             {
-                commandLabel, id1Label, id1Input, id2Label, id2Input, getStatusButton, controllerIdCombo,
+                commandLabel, id1Label, id1Input, id2Label, id2Input, getStatusButton,
                 stepMoveButton, xLabel, moveXInput, yLabel, moveYInput, zLabel, moveZInput,
                 planPathButton, executePathButton, pathInfo
             });
@@ -275,7 +275,7 @@ namespace MC104.test
                 Font = new Font("Consolas", 9F),
                 BackColor = Color.Black,
                 ForeColor = Color.LightGreen,
-                Anchor = AnchorStyles.Left | AnchorStyles.Right
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             };
 
             testGroupBox.Controls.Add(serverPanel);
@@ -283,16 +283,19 @@ namespace MC104.test
             testGroupBox.Controls.Add(logLabel);
             testGroupBox.Controls.Add(testLogTextBox);
 
-            this.Controls.Add(testGroupBox);
-
             // Window resize handler
             this.Resize += (s, e) =>
             {
+                if (testGroupBox != null)
+                {
+                    testGroupBox.Size = new Size(this.ClientSize.Width - 20, this.ClientSize.Height - 50);
+                }
                 if (serverPanel != null && commandPanel != null)
                 {
                     serverPanel.Width = testGroupBox.Width - 20;
                     commandPanel.Width = testGroupBox.Width - 20;
                     testLogTextBox.Width = testGroupBox.Width - 20;
+                    testLogTextBox.Height = testGroupBox.Height - 260;
                 }
             };
         }
