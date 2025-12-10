@@ -1,19 +1,17 @@
 ﻿using HpmcstdCs;
 using MicrosupportController;
+using SmoothTrajectoryTest;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Forms.VisualStyles;
 
 namespace IndexOverrideTest
 {
     class Program
     {
-        /// 1 um = 20 pulses
-        const double PULSE_RATIO = 20.0;
-
         /// Trajectory point struct
         struct TrajectoryPoint
         {
@@ -24,20 +22,13 @@ namespace IndexOverrideTest
         }
 
         /// Speed settings (in um/s)
-        const double BASE_SPEED_UM = 1000;  // 2 mm/s
-        const double MAX_SPEED_UM = 8000;   // 8 mm/s
+        const double BASE_SPEED_UM = 5000;  // 5 mm/s
 
         static Microsupport controller = null;
         static List<TrajectoryPoint> trajectoryPoints = new List<TrajectoryPoint>();
-        static bool isRunning = false;
 
-        /// trajectory points
-        static readonly long[] PointA = { (long)(1000 * PULSE_RATIO), (long)(1000 * PULSE_RATIO), 0 };
-        static readonly long[] PointB = { (long)(1000 * PULSE_RATIO), (long)(2000 * PULSE_RATIO), 0 };
-        static readonly long[] PointC = { (long)(2000 * PULSE_RATIO), (long)(2000 * PULSE_RATIO), 0 };
-
-        /// Threshold to trigger override (as a fraction of distance)
-        const double OVERRIDE_THRESHOLD = 0.8;
+        /// The vector distance (in micrometers) from the current target point at which the controller will override to the next target point.
+        const double OVERRIDE_DISTANCE_THRESHOLD = 250.0; // um
 
         static async Task Main(string[] args)
         {
@@ -55,57 +46,60 @@ namespace IndexOverrideTest
 
                 Console.WriteLine("✅ Controller Initialized.");
 
-                /// Home the device before starting tests
-                Console.WriteLine("Press ENTER to Home the device, or 'S' to skip...");
-                var key = Console.ReadLine();
-                if (key?.ToUpper() != "S")
-                {
-                    Console.WriteLine("Homing...");
-                    await controller.StartOriginAsync();
-                    Thread.Sleep(2000);
-                }
+                // ==========================================
                 // TEST 0: Generate Trajectory Points
+                // ==========================================
                 Console.WriteLine("Generating trajectory points...");
                 trajectoryPoints.Clear();
-                trajectoryPoints.Add(new TrajectoryPoint { X = 1000, Y = 1000, Z = 0, Index = 0 });
-                trajectoryPoints.Add(new TrajectoryPoint { X = 1000, Y = 2000, Z = 0, Index = 1 });
-                trajectoryPoints.Add(new TrajectoryPoint { X = 2000, Y = 2000, Z = 0, Index = 2 });
+                trajectoryPoints.Add(new TrajectoryPoint { X = 1000, Y = 1000, Z = 1000, Index = 0 });
+                trajectoryPoints.Add(new TrajectoryPoint { X = 1500, Y = 1200, Z = 1500, Index = 1 });
+                trajectoryPoints.Add(new TrajectoryPoint { X = 2000, Y = 1500, Z = 2000, Index = 2 });
+                trajectoryPoints.Add(new TrajectoryPoint { X = 2500, Y = 2500, Z = 2500, Index = 3 });
+                trajectoryPoints.Add(new TrajectoryPoint { X = 3000, Y = 3000, Z = 3000, Index = 4 });
+                trajectoryPoints.Add(new TrajectoryPoint { X = 4000, Y = 3500, Z = 4000, Index = 5 });
+                trajectoryPoints.Add(new TrajectoryPoint { X = 5000, Y = 4000, Z = 5000, Index = 6 });
 
                 // ==========================================
                 // TEST 1: Baseline PTP (Point-to-Point)
                 // ==========================================
                 Console.WriteLine("\n--- Starting TEST 1: Standard PTP (Expect Stops) ---");
-                Console.WriteLine("Press ENTER to run PTP mode...");
-                Console.ReadLine();
                 await Task.Delay(1000);
                 await RunPTP();
 
-                // 回到原点准备下一次测试
-                Console.WriteLine("Returning to (0,0,0) for next test...");
-                MoveToAbs(controller, new long[] { 0, 0, 0 });
-                WaitForMotion(controller);
+                /// Return to origin for next test
+                await Task.Delay(1000);
+                await controller.StartOriginAsync();
+                Console.WriteLine("Homing completed.");
 
                 // ==========================================
                 // TEST 2: CP Mode (Index Override)
                 // ==========================================
                 Console.WriteLine("\n--- Starting TEST 2: CP Mode (Index Override) ---");
-                Console.WriteLine("Expect continuous motion without full stops between segments.");
-                Console.WriteLine($"Override Trigger Threshold: {OVERRIDE_THRESHOLD * 100}%");
-                Console.WriteLine("Press ENTER to run CP mode...");
-                Console.ReadLine();
+                await Task.Delay(1000);
+                await RunCP();
 
-                RunCP(controller);
-
-                Console.WriteLine("\nAll Tests Completed. Press ENTER to exit.");
-                controller.Close(); // 假设有 Close()
-                Console.ReadLine();
+                /// Return to origin after test
+                await Task.Delay(1000);
+                await controller.StartOriginAsync();
+                Console.WriteLine("Homing completed.");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"❌ Exception Occurred: {ex.Message}");
+                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+            }
+            finally
+            {
+                if (controller != null)
+                {
+                    controller.Terminate();
+                }
             }
         }
 
+        /// <summary>
+        /// Initializes the controller and performs homing of all axes asynchronously.
+        /// </summary>
         static async Task<bool> InitializeController()
         {
             Console.WriteLine("Initializing controller...");
@@ -133,6 +127,16 @@ namespace IndexOverrideTest
         }
 
         /// <summary>
+        /// Moves all axes to the specified absolute positions asynchronously.
+        /// </summary>
+        static async Task Step(double x, double y, double z)
+        {
+            controller.SetSpeedAll(BASE_SPEED_UM);
+            controller.StartIncAbsAll(x, y, z);
+            await controller.Wait();
+        }
+
+        /// <summary>
         /// Standard PTP motion (comparison group)
         /// Logic: Move -> Wait for Stop -> Next Move
         /// </summary>
@@ -141,142 +145,177 @@ namespace IndexOverrideTest
             Console.WriteLine("Starting PTP tracking...");
             Stopwatch sw = Stopwatch.StartNew();
 
-            controller.SetSpeedAll(BASE_SPEED_UM);
-
             for (int i = 0; i < trajectoryPoints.Count; i++)
             {
-                var point = trajectoryPoints[i];
-                long[] targetPos = { (long)(point.X * PULSE_RATIO), (long)(point.Y * PULSE_RATIO), (long)(point.Z * PULSE_RATIO) };
+                await Step(trajectoryPoints[i].X, trajectoryPoints[i].Y, trajectoryPoints[i].Z);
 
-                // 执行绝对运动
-                MoveToAbs(controller, targetPos);
-
-                // 阻塞等待直到运动停止
-                WaitForMotion(controller);
-
-                Console.WriteLine($"[PTP] Reached Point {point.Index}. Motor Stopped.");
-                await Task.Delay(500); // 使用 async-friendly 的 Delay
+                Console.WriteLine($"[PTP] Reached Point {i}. Motor Stopped.");
             }
+            sw.Stop();
+            Console.WriteLine($"[PTP] Total time: {sw.ElapsedMilliseconds} ms");
         }
 
         /// <summary>
-        /// 连续路径运动 (实验组)
-        /// 逻辑：移动 -> 监控进度 -> 动态 Override 目标
+        /// Continuous Path (CP) motion using Index Override
+        /// Logic: Move -> Monitor Position -> Override Target -> Next Segment
         /// </summary>
-        static void RunCP(MicrosupportController.Microsupport ctrl)
+        static async Task RunCP()
         {
-            long[][] trajectory = { PointA, PointB, PointC };
-
-            // 1. 启动第一段运动 (Start -> PointA)
-            Console.WriteLine($"[CP] Launching initial move to Point A ({PointA[0]}, {PointA[1]})");
-            MoveToAbs(ctrl, PointA);
-
-            for (int i = 0; i < trajectory.Length - 1; i++)
+            if (trajectoryPoints.Count < 2)
             {
-                long[] currentTarget = trajectory[i];
-                long[] nextTarget = trajectory[i + 1];
+                Console.WriteLine("[CP] Not enough points for trajectory.");
+                return;
+            }
 
-                Console.WriteLine($"[CP] Segment {i + 1} Running... Waiting for override window.");
+            Stopwatch sw = Stopwatch.StartNew();
 
-                // 2. 轮询循环：监控当前位置是否接近当前目标
+            /// 1. Start first segment (Start -> Point 0) to kick off motion
+            var firstPoint = trajectoryPoints[0];
+            Console.WriteLine($"[CP] Launching initial move to Point 0 ({firstPoint.X}, {firstPoint.Y}, {firstPoint.Z}).");
+            controller.SetSpeedAll(BASE_SPEED_UM);
+            controller.StartIncAbsAll(firstPoint.X, firstPoint.Y, firstPoint.Z);
+
+            /// 2. Loop through each segment in the trajectory
+            for (int i = 0; i < trajectoryPoints.Count - 1; i++)
+            {
+                var currentTarget = trajectoryPoints[i];
+                var nextTarget = trajectoryPoints[i + 1];
+
+                Console.WriteLine($"[CP] Segment {i}->{i + 1} running. Target: ({currentTarget.X}, {currentTarget.Y}, {currentTarget.Z}). Next: ({nextTarget.X}, {nextTarget.Y}, {nextTarget.Z}). Waiting for override window.");
+
+                /// 3. Monitor position until reaching threshold
                 bool overrideTriggered = false;
-                while (!overrideTriggered)
+                while (!overrideTriggered && controller.IsBusy())
                 {
-                    // 获取当前位置 (假设 GetPosition 返回数组 [x, y, z])
-                    long[] currentPos = GetCurrentPositions(ctrl);
+                    double[] currentPos = controller.GetPositions();
 
-                    // 计算这一段的总距离和当前进度的距离 (这里简化计算，取最大轴距)
-                    // 注意：这只是一个简化的判断逻辑，实际项目中可能需要根据矢量距离计算
-                    long distToTargetX = Math.Abs(currentTarget[0] - currentPos[0]);
-                    long distToTargetY = Math.Abs(currentTarget[1] - currentPos[1]);
+                    /// Calculate the vector distance to the current target
+                    double dx = currentTarget.X - currentPos[0];
+                    double dy = currentTarget.Y - currentPos[1];
+                    double dz = currentTarget.Z - currentPos[2];
+                    double vectorDistance = Math.Sqrt(dx * dx + dy * dy + dz * dz);
 
-                    // 假设只要有一个轴接近目标 (剩余距离 < 总距离的20%)，就触发 Override
-                    // 这里我们硬编码判断：如果距离目标小于 200 pulses (假设总长1000)
-                    bool closeEnough = (distToTargetX < 200) && (distToTargetY < 200);
-
-                    if (closeEnough)
+                    /// Check if the vector distance is within the override threshold
+                    if (vectorDistance < OVERRIDE_DISTANCE_THRESHOLD)
                     {
-                        Console.WriteLine($"[CP] Threshold reached! Overriding target to Next Point ({nextTarget[0]}, {nextTarget[1]})...");
+                        Console.WriteLine($"[CP] Threshold reached! (Distance: {vectorDistance:F1} um). Overriding target to Point {i + 1} ({nextTarget.X}, {nextTarget.Y}, {nextTarget.Z})...");
 
-                        // 3. 核心：调用 McsdIndexOverride
-                        // 注意：你需要对每个轴分别调用
-                        PerformOverride(ctrl, 0, nextTarget[0]); // X轴
-                        PerformOverride(ctrl, 1, nextTarget[1]); // Y轴
-                        PerformOverride(ctrl, 2, nextTarget[2]); // Z轴
+                        /// Calculate the displacement to the next target for each axis
+                        double nextDx = nextTarget.X - currentTarget.X;
+                        double nextDy = nextTarget.Y - currentTarget.Y;
+                        double nextDz = nextTarget.Z - currentTarget.Z;
 
-                        overrideTriggered = true; // 跳出循环，进入下一段监控
+                        /// Find the largest delta to scale speed
+                        double maxDisplacement = Math.Max(Math.Abs(nextDx), Math.Max(Math.Abs(nextDy), Math.Abs(nextDz)));
+
+                        /// Avoid division by zero
+                        if (maxDisplacement > 1e-6) 
+                        {
+                            /// Calculate speed for each axis based on its displacement relative to the max displacement.
+                            /// The axis with the largest displacement will move at MAX_SPEED_UM.
+                            double speedX = BASE_SPEED_UM * (Math.Abs(nextDx) / maxDisplacement);
+                            double speedY = BASE_SPEED_UM * (Math.Abs(nextDy) / maxDisplacement);
+                            double speedZ = BASE_SPEED_UM * (Math.Abs(nextDz) / maxDisplacement);
+
+                            /// Ensure speeds are not below a minimum threshold to prevent stalling.
+                            const double MIN_SPEED_UM = 100.0;
+                            /// 4. Apply HiSpeedOverride for each axis where there is displacement.
+                            if (Math.Abs(nextDx) > 1e-6) controller.HiSpeedOverride(Microsupport.AXIS.X, Math.Max(speedX, MIN_SPEED_UM));
+                            if (Math.Abs(nextDy) > 1e-6) controller.HiSpeedOverride(Microsupport.AXIS.Y, Math.Max(speedY, MIN_SPEED_UM));
+                            if (Math.Abs(nextDz) > 1e-6) controller.HiSpeedOverride(Microsupport.AXIS.Z, Math.Max(speedZ, MIN_SPEED_UM));
+
+                            Console.WriteLine($"[CP] Speeds adjusted for next segment: X={speedX:F0}, Y={speedY:F0}, Z={speedZ:F0} um/s");
+                        }
+
+                        /// 5. Core: Call McsdIndexOverride for any axis where the target position changes.
+                        double[] overridePos = controller.GetPositions();
+                        Console.WriteLine($"[CP] Current Position before override: {overridePos[0]}, {overridePos[1]}, {overridePos[2]}.");
+
+                        /// Override X-axis if its target position changes.
+                        if (Math.Abs(nextTarget.X - currentTarget.X) > 1e-6)
+                        {
+                            if (controller.IsBusy(Microsupport.AXIS.X))
+                            {
+                                controller.IndexOverride(Microsupport.AXIS.X, (uint)controller.Um2enc(Microsupport.AXIS.X, nextTarget.X));
+                            }
+                            else
+                            {
+                                /// If the axis is idle, we need to start a new move to the next target
+                                controller.StartIncAbs(Microsupport.AXIS.X, nextTarget.X);
+                                Console.WriteLine($"[CP] X-axis was idle. Started new move to {nextTarget.X} um.");
+                            }
+                        }
+                        else
+                        {
+                            controller.StopAxis(Microsupport.AXIS.X);
+                            Console.WriteLine("[CP] X-axis has no displacement. Commanding deceleration stop.");
+                        }
+
+                        /// Override Y-axis if its target position changes.
+                        if (Math.Abs(nextTarget.Y - currentTarget.Y) > 1e-6)
+                        {
+                            if (controller.IsBusy(Microsupport.AXIS.Y))
+                            {
+                                controller.IndexOverride(Microsupport.AXIS.Y, (uint)controller.Um2enc(Microsupport.AXIS.Y, nextTarget.Y));
+                            }
+                            else
+                            {
+                                controller.StartIncAbs(Microsupport.AXIS.Y, nextTarget.Y);
+                                Console.WriteLine("[CP] Y-axis was idle. Started new move with StartIncAbs.");
+                            }
+                        }
+                        else
+                        {
+                            controller.StopAxis(Microsupport.AXIS.Y);
+                            Console.WriteLine("[CP] Y-axis has no displacement. Commanding deceleration stop.");
+                        }
+
+                        /// Override Z-axis if its target position changes.
+                        if (Math.Abs(nextTarget.Z - currentTarget.Z) > 1e-6)
+                        {
+                            if (controller.IsBusy(Microsupport.AXIS.Z))
+                            {
+                                controller.IndexOverride(Microsupport.AXIS.Z, (uint)controller.Um2enc(Microsupport.AXIS.Z, nextTarget.Z));
+                            }
+                            else
+                            {
+                                controller.StartIncAbs(Microsupport.AXIS.Z, nextTarget.Z);
+                                Console.WriteLine("[CP] Z-axis was idle. Started new move with StartIncAbs.");
+                            }
+                        }
+                        else
+                        {
+                            controller.StopAxis(Microsupport.AXIS.Z);
+                            Console.WriteLine("[CP] Z-axis has no displacement. Commanding deceleration stop.");
+                        }
+
+                        overrideTriggered = true; // Exit loop and monitor next segment
                     }
 
-                    // 防止死循环占用过多CPU
-                    Thread.Sleep(1);
+                    await Task.Delay(1);
+                }
 
-                    // 安全检查：如果电机已经意外停止，则退出循环
-                    if (IsMotionDone(ctrl))
-                    {
-                        Console.WriteLine("[CP] Warning: Motion stopped before override could happen.");
-                        break;
-                    }
+                /// Log current position after override
+                double[] pos = controller.GetPositions();
+                Console.WriteLine($"[CP] Segment {i}->{i + 1} override complete at position: {pos[0]}, {pos[1]}, {pos[2]}.");
+
+                /// Safety check: If controller went idle unexpectedly
+                if (!controller.IsBusy())
+                {
+                    double[] finalPosErr = controller.GetPositions();
+                    Console.WriteLine($"[CP] Motion stopped unexpectedly. Last position reached before controller went idle:{finalPosErr[0]}, {finalPosErr[1]}, {finalPosErr[2]}. Exiting.");
+                    break;
                 }
             }
 
-            // 等待最后一段运动完成
-            WaitForMotion(ctrl);
-            Console.WriteLine("[CP] Trajectory Complete.");
-        }
+            /// Wait for the final segment to complete
+            await controller.Wait();
+            sw.Stop();
 
-        // ==========================================
-        // 下面是 Helper 方法，用于适配您的特定 Controller 类接口
-        // 您可能需要根据您的 MicrosupportController.cs 实际定义进行微调
-        // ==========================================
-
-        static void MoveToAbs(MicrosupportController.Microsupport ctrl, long[] pos)
-        {
-            // 假设 DriveMove 接受轴索引和脉冲数
-            // 如果您的接口是同时驱动所有轴，请修改此处
-            ctrl.DriveMove(0, (int)pos[0]);
-            ctrl.DriveMove(1, (int)pos[1]);
-            ctrl.DriveMove(2, (int)pos[2]);
-        }
-
-        static void PerformOverride(MicrosupportController.Microsupport ctrl, short axisIndex, long newTargetPulse)
-        {
-            // 这是关键部分：调用底层的 McsdIndexOverride
-            // 如果您的 Controller 类没有直接暴露这个方法，您可能需要：
-            // 1. 在 Controller 类中添加 public void Override(...)
-            // 2. 或者直接调用 Hpmcstd.McsdIndexOverride(...)
-
-            // 示例调用 (假设您封装了一个方法):
-            // ctrl.OverrideTarget(axisIndex, (int)newTargetPulse);
-
-            // 示例直接调用 P/Invoke (如果在同一程序集):
-            // 0 是 Board ID, axisIndex 是轴号, newTargetPulse 是新数据
-            // int ret = Hpmcstd.McsdIndexOverride(0, (ushort)axisIndex, (int)newTargetPulse);
-
-            // 假设您已经在 MicrosupportController.cs 中写了一个 helper:
-            ctrl.McsdIndexOverride(0, (ushort)axisIndex, (int)newTargetPulse);
-        }
-
-        static long[] GetCurrentPositions(MicrosupportController.Microsupport ctrl)
-        {
-            // 模拟获取位置
-            long x = ctrl.GetPosition(0);
-            long y = ctrl.GetPosition(1);
-            long z = ctrl.GetPosition(2);
-            return new long[] { x, y, z };
-        }
-
-        static bool IsMotionDone(MicrosupportController.Microsupport ctrl)
-        {
-            // 检查 X, Y, Z 是否都停止
-            return ctrl.GetStatus(0) == 0 && ctrl.GetStatus(1) == 0 && ctrl.GetStatus(2) == 0;
-        }
-
-        static void WaitForMotion(MicrosupportController.Microsupport ctrl)
-        {
-            while (!IsMotionDone(ctrl))
-            {
-                Thread.Sleep(10);
-            }
+            /// Log final position
+            double[] finalPos = controller.GetPositions();
+            Console.WriteLine($"Last position reached:{finalPos[0]}, {finalPos[1]}, {finalPos[2]}. Exiting.");
+            Console.WriteLine($"[CP] Trajectory Complete. Total time: {sw.ElapsedMilliseconds} ms");
         }
     }
 }

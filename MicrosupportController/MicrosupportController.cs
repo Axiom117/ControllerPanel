@@ -855,6 +855,63 @@ namespace MicrosupportController
             StartIncBuffer(xUm, yUm, zUm);
             await Wait(); // Wait for the movement to complete
         }
+
+        public uint IndexOverride(AXIS axis, uint newTargetPulse)
+        {
+            if (!this.IsValid)
+                return Hpmcstd.MCSD_ERROR_NO_DEVICE;
+
+            ushort axisCode = 0;
+            switch (axis)
+            {
+                case AXIS.X:
+                    axisCode = MC104_AXIS2;
+                    break;
+                case AXIS.Y:
+                    axisCode = MC104_AXIS1;
+                    break;
+                case AXIS.Z:
+                    axisCode = MC104_AXIS3;
+                    break;
+                default:
+                    return Hpmcstd.MCSD_ERROR_AXIS;
+            }
+
+            return Hpmcstd.McsdIndexOverride(hController, axisCode, newTargetPulse);
+        }
+
+        public uint SpeedOverride(AXIS axis, uint newSpeedUm)
+        {
+            if (!this.IsValid)
+                return Hpmcstd.MCSD_ERROR_NO_DEVICE;
+
+            ushort axisCode = 0;
+            double resolution;
+
+            switch (axis)
+            {
+                case AXIS.X:
+                    axisCode = MC104_AXIS2;
+                    resolution = RESOLUTIONS_AXIS_X;
+                    break;
+                case AXIS.Y:
+                    axisCode = MC104_AXIS1;
+                    resolution = RESOLUTIONS_AXIS_Y;
+                    break;
+                case AXIS.Z:
+                    axisCode = MC104_AXIS3;
+                    resolution = RESOLUTIONS_AXIS_Z;
+                    break;
+                default:
+                    return Hpmcstd.MCSD_ERROR_AXIS;
+            }
+
+            /// Convert speed from um/sec to pulses/sec
+            double pulsesPerSec = newSpeedUm / resolution;
+
+            /// wKind = 1 specifies that dSpeed is in Pulse/sec format.
+            return Hpmcstd.McsdHiSpeedOverride(hController, axisCode, 1, pulsesPerSec);
+        }
         #endregion
 
         #region Status Query and Error Handling
@@ -910,9 +967,9 @@ namespace MicrosupportController
             /// Check if the result indicates an error.
             switch (axis)
             {
-                case AXIS.X:
-                    return (status & 0x01) > 0;
                 case AXIS.Y:
+                    return (status & 0x01) > 0;
+                case AXIS.X:
                     return (status & 0x02) > 0;
                 case AXIS.Z:
                     return (status & 0x04) > 0;

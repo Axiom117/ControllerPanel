@@ -266,9 +266,9 @@ namespace MC104
                     posY.Text = currentY.ToString("0.0");
                     posZ.Text = currentZ.ToString("0.0");
 
-                    posXC.Text = (currentX - RANGE_X/2).ToString("0.0");
-                    posYC.Text = (currentY - RANGE_Y/2).ToString("0.0");
-                    posZC.Text = (- currentZ + RANGE_Z/2).ToString("0.0");
+                    posXC.Text = (currentX - RANGE_X / 2).ToString("0.0");
+                    posYC.Text = (currentY - RANGE_Y / 2).ToString("0.0");
+                    posZC.Text = (-currentZ + RANGE_Z / 2).ToString("0.0");
                 }
             }
         }
@@ -371,6 +371,12 @@ namespace MC104
         /// </summary>
         private async void buttons_MouseDown(object sender, MouseEventArgs e)
         {
+            if (string.IsNullOrEmpty(selectedController))
+            {
+                MessageBox.Show("Error: Please select a target controller before executing an action.", "No Controller Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             Microsupport.AXIS axis = 0;
             Microsupport.DIRECTION direction = 0;
 
@@ -400,6 +406,12 @@ namespace MC104
         /// </summary>
         private void buttons_MouseUp(object sender, MouseEventArgs e)
         {
+            if (string.IsNullOrEmpty(selectedController))
+            {
+                /// Silently return as the error message would have been shown on MouseDown.
+                return;
+            }
+
             if (radioButton1.Checked)
             {
                 Microsupport.AXIS axis = 0;
@@ -413,6 +425,15 @@ namespace MC104
 
         private void trackBar1_Scroll(object sender, EventArgs e)
         {
+            if (string.IsNullOrEmpty(selectedController))
+            {
+                MessageBox.Show("Error: Please select a target controller before executing an action.", "No Controller Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                /// Reset trackbar to a default/safe value if needed
+                trackBar1.Value = trackBar1.Minimum;
+                labelSpeed.Text = "0 (μm/s)";
+                return;
+            }
+
             int speed = trackBar1.Value;
             if (speed < 50)
                 speed = 50;
@@ -432,6 +453,12 @@ namespace MC104
         /// <param name="e">An <see cref="EventArgs"/> instance containing the event data.</param>
         private async void button_origin_Click(object sender, EventArgs e)
         {
+            if (string.IsNullOrEmpty(selectedController))
+            {
+                MessageBox.Show("Error: Please select a target controller before executing an action.", "No Controller Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             Task MCSO = Microsupport.controllers[selectedController].StartOriginAsync();
 
             await MCSO;
@@ -446,6 +473,12 @@ namespace MC104
         /// <param name="e">An <see cref="EventArgs"/> instance containing the event data.</param>
         private void button_emgstop_Click(object sender, EventArgs e)
         {
+            if (string.IsNullOrEmpty(selectedController))
+            {
+                MessageBox.Show("Error: Please select a target controller before executing an action.", "No Controller Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             while (true)
             {
                 Microsupport.controllers[selectedController].StopEmergency();
@@ -454,6 +487,12 @@ namespace MC104
 
         private async void button_center_Click(object sender, EventArgs e)
         {
+            if (string.IsNullOrEmpty(selectedController))
+            {
+                MessageBox.Show("Error: Please select a target controller before executing an action.", "No Controller Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             if (Microsupport.controllers.ContainsKey(selectedController))
             {
                 Task MCCO = Microsupport.controllers[selectedController].StartCenter();
