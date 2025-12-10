@@ -22,16 +22,12 @@ namespace IndexOverrideTest
         }
 
         /// Speed settings (in um/s)
-        const double BASE_SPEED_UM = 6000;  // 5 mm/s
+        const double BASE_SPEED_UM = 5000;  // 5 mm/s
 
         static Microsupport controller = null;
         static List<TrajectoryPoint> trajectoryPoints = new List<TrajectoryPoint>();
-        static bool isRunning = false;
 
-        /// <summary>
-        /// The vector distance (in micrometers) from the current target point at which the controller
-        /// will override to the next target point.
-        /// </summary>
+        /// The vector distance (in micrometers) from the current target point at which the controller will override to the next target point.
         const double OVERRIDE_DISTANCE_THRESHOLD = 250.0; // um
 
         static async Task Main(string[] args)
@@ -67,31 +63,25 @@ namespace IndexOverrideTest
                 // TEST 1: Baseline PTP (Point-to-Point)
                 // ==========================================
                 Console.WriteLine("\n--- Starting TEST 1: Standard PTP (Expect Stops) ---");
-                Console.WriteLine("Press ENTER to run PTP mode...");
-                Console.ReadLine();
                 await Task.Delay(1000);
                 await RunPTP();
 
-                /// Return to origin
-                Console.WriteLine("Returning to (0,0,0) for next test...");
+                /// Return to origin for next test
                 await Task.Delay(1000);
                 await controller.StartOriginAsync();
                 Console.WriteLine("Homing completed.");
 
-                await Task.Delay(2000);
                 // ==========================================
                 // TEST 2: CP Mode (Index Override)
                 // ==========================================
                 Console.WriteLine("\n--- Starting TEST 2: CP Mode (Index Override) ---");
-                Console.WriteLine("Expect continuous motion without full stops between segments.");
-                Console.WriteLine($"Override Trigger Distance: {OVERRIDE_DISTANCE_THRESHOLD} um");
-                Console.WriteLine("Press ENTER to run CP mode...");
-                Console.ReadLine();
-
+                await Task.Delay(1000);
                 await RunCP();
 
-                Console.WriteLine("\nAll Tests Completed. Press ENTER to exit.");
-                Console.ReadLine();
+                /// Return to origin after test
+                await Task.Delay(1000);
+                await controller.StartOriginAsync();
+                Console.WriteLine("Homing completed.");
             }
             catch (Exception ex)
             {
@@ -107,6 +97,9 @@ namespace IndexOverrideTest
             }
         }
 
+        /// <summary>
+        /// Initializes the controller and performs homing of all axes asynchronously.
+        /// </summary>
         static async Task<bool> InitializeController()
         {
             Console.WriteLine("Initializing controller...");
@@ -133,6 +126,9 @@ namespace IndexOverrideTest
             return true;
         }
 
+        /// <summary>
+        /// Moves all axes to the specified absolute positions asynchronously.
+        /// </summary>
         static async Task Step(double x, double y, double z)
         {
             controller.SetSpeedAll(BASE_SPEED_UM);
@@ -173,12 +169,13 @@ namespace IndexOverrideTest
 
             Stopwatch sw = Stopwatch.StartNew();
 
-            // 1. Start first segment (Start -> Point 0)
+            /// 1. Start first segment (Start -> Point 0) to kick off motion
             var firstPoint = trajectoryPoints[0];
             Console.WriteLine($"[CP] Launching initial move to Point 0 ({firstPoint.X}, {firstPoint.Y}, {firstPoint.Z}).");
             controller.SetSpeedAll(BASE_SPEED_UM);
             controller.StartIncAbsAll(firstPoint.X, firstPoint.Y, firstPoint.Z);
 
+            /// 2. Loop through each segment in the trajectory
             for (int i = 0; i < trajectoryPoints.Count - 1; i++)
             {
                 var currentTarget = trajectoryPoints[i];
@@ -186,7 +183,7 @@ namespace IndexOverrideTest
 
                 Console.WriteLine($"[CP] Segment {i}->{i + 1} running. Target: ({currentTarget.X}, {currentTarget.Y}, {currentTarget.Z}). Next: ({nextTarget.X}, {nextTarget.Y}, {nextTarget.Z}). Waiting for override window.");
 
-                /// 2. Monitor position until reaching threshold
+                /// 3. Monitor position until reaching threshold
                 bool overrideTriggered = false;
                 while (!overrideTriggered && controller.IsBusy())
                 {
@@ -203,7 +200,7 @@ namespace IndexOverrideTest
                     {
                         Console.WriteLine($"[CP] Threshold reached! (Distance: {vectorDistance:F1} um). Overriding target to Point {i + 1} ({nextTarget.X}, {nextTarget.Y}, {nextTarget.Z})...");
 
-                        /// Calculate the delta for each axix
+                        /// Calculate the displacement to the next target for each axis
                         double nextDx = nextTarget.X - currentTarget.X;
                         double nextDy = nextTarget.Y - currentTarget.Y;
                         double nextDz = nextTarget.Z - currentTarget.Z;
@@ -211,7 +208,8 @@ namespace IndexOverrideTest
                         /// Find the largest delta to scale speed
                         double maxDisplacement = Math.Max(Math.Abs(nextDx), Math.Max(Math.Abs(nextDy), Math.Abs(nextDz)));
 
-                        if (maxDisplacement > 1e-6) // Avoid division by zero
+                        /// Avoid division by zero
+                        if (maxDisplacement > 1e-6) 
                         {
                             /// Calculate speed for each axis based on its displacement relative to the max displacement.
                             /// The axis with the largest displacement will move at MAX_SPEED_UM.
@@ -221,20 +219,19 @@ namespace IndexOverrideTest
 
                             /// Ensure speeds are not below a minimum threshold to prevent stalling.
                             const double MIN_SPEED_UM = 100.0;
+                            /// 4. Apply HiSpeedOverride for each axis where there is displacement.
                             if (Math.Abs(nextDx) > 1e-6) controller.HiSpeedOverride(Microsupport.AXIS.X, Math.Max(speedX, MIN_SPEED_UM));
                             if (Math.Abs(nextDy) > 1e-6) controller.HiSpeedOverride(Microsupport.AXIS.Y, Math.Max(speedY, MIN_SPEED_UM));
                             if (Math.Abs(nextDz) > 1e-6) controller.HiSpeedOverride(Microsupport.AXIS.Z, Math.Max(speedZ, MIN_SPEED_UM));
 
                             Console.WriteLine($"[CP] Speeds adjusted for next segment: X={speedX:F0}, Y={speedY:F0}, Z={speedZ:F0} um/s");
                         }
-                        /// 3. Core: Call McsdIndexOverride for any axis where the target position changes.
-                        /// This is more robust than checking IsBusy(), as an axis might be idle if its
-                        /// coordinate hasn't changed in the previous segment.
 
+                        /// 5. Core: Call McsdIndexOverride for any axis where the target position changes.
                         double[] overridePos = controller.GetPositions();
                         Console.WriteLine($"[CP] Current Position before override: {overridePos[0]}, {overridePos[1]}, {overridePos[2]}.");
 
-                        // Override X-axis if its target position changes.
+                        /// Override X-axis if its target position changes.
                         if (Math.Abs(nextTarget.X - currentTarget.X) > 1e-6)
                         {
                             if (controller.IsBusy(Microsupport.AXIS.X))
@@ -243,7 +240,7 @@ namespace IndexOverrideTest
                             }
                             else
                             {
-                                // If the axis is idle, we need to start a new move to the next target
+                                /// If the axis is idle, we need to start a new move to the next target
                                 controller.StartIncAbs(Microsupport.AXIS.X, nextTarget.X);
                                 Console.WriteLine($"[CP] X-axis was idle. Started new move to {nextTarget.X} um.");
                             }
@@ -254,7 +251,7 @@ namespace IndexOverrideTest
                             Console.WriteLine("[CP] X-axis has no displacement. Commanding deceleration stop.");
                         }
 
-                        // Override Y-axis if its target position changes.
+                        /// Override Y-axis if its target position changes.
                         if (Math.Abs(nextTarget.Y - currentTarget.Y) > 1e-6)
                         {
                             if (controller.IsBusy(Microsupport.AXIS.Y))
@@ -273,7 +270,7 @@ namespace IndexOverrideTest
                             Console.WriteLine("[CP] Y-axis has no displacement. Commanding deceleration stop.");
                         }
 
-                        // Override Z-axis if its target position changes.
+                        /// Override Z-axis if its target position changes.
                         if (Math.Abs(nextTarget.Z - currentTarget.Z) > 1e-6)
                         {
                             if (controller.IsBusy(Microsupport.AXIS.Z))
@@ -298,21 +295,24 @@ namespace IndexOverrideTest
                     await Task.Delay(1);
                 }
 
+                /// Log current position after override
+                double[] pos = controller.GetPositions();
+                Console.WriteLine($"[CP] Segment {i}->{i + 1} override complete at position: {pos[0]}, {pos[1]}, {pos[2]}.");
+
+                /// Safety check: If controller went idle unexpectedly
                 if (!controller.IsBusy())
                 {
                     double[] finalPosErr = controller.GetPositions();
-                    Console.WriteLine($"Last position reached before controller went idle:{finalPosErr[0]}, {finalPosErr[1]}, {finalPosErr[2]}. Exiting.");
-                    Console.WriteLine("[CP] Motion stopped unexpectedly.");
+                    Console.WriteLine($"[CP] Motion stopped unexpectedly. Last position reached before controller went idle:{finalPosErr[0]}, {finalPosErr[1]}, {finalPosErr[2]}. Exiting.");
                     break;
                 }
-
-                double[] pos = controller.GetPositions();
-                Console.WriteLine($"[CP] Segment {i}->{i + 1} override complete at position: {pos[0]}, {pos[1]}, {pos[2]}.");
             }
 
-            // Wait for the final segment to complete
+            /// Wait for the final segment to complete
             await controller.Wait();
             sw.Stop();
+
+            /// Log final position
             double[] finalPos = controller.GetPositions();
             Console.WriteLine($"Last position reached:{finalPos[0]}, {finalPos[1]}, {finalPos[2]}. Exiting.");
             Console.WriteLine($"[CP] Trajectory Complete. Total time: {sw.ElapsedMilliseconds} ms");
