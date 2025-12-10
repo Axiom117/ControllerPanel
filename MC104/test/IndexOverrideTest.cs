@@ -22,7 +22,7 @@ namespace IndexOverrideTest
         }
 
         /// Speed settings (in um/s)
-        const double BASE_SPEED_UM = 5000;  // 5 mm/s
+        const double BASE_SPEED_UM = 6000;  // 5 mm/s
 
         static Microsupport controller = null;
         static List<TrajectoryPoint> trajectoryPoints = new List<TrajectoryPoint>();
@@ -248,6 +248,11 @@ namespace IndexOverrideTest
                                 Console.WriteLine($"[CP] X-axis was idle. Started new move to {nextTarget.X} um.");
                             }
                         }
+                        else
+                        {
+                            controller.StopAxis(Microsupport.AXIS.X);
+                            Console.WriteLine("[CP] X-axis has no displacement. Commanding deceleration stop.");
+                        }
 
                         // Override Y-axis if its target position changes.
                         if (Math.Abs(nextTarget.Y - currentTarget.Y) > 1e-6)
@@ -262,6 +267,11 @@ namespace IndexOverrideTest
                                 Console.WriteLine("[CP] Y-axis was idle. Started new move with StartIncAbs.");
                             }
                         }
+                        else
+                        {
+                            controller.StopAxis(Microsupport.AXIS.Y);
+                            Console.WriteLine("[CP] Y-axis has no displacement. Commanding deceleration stop.");
+                        }
 
                         // Override Z-axis if its target position changes.
                         if (Math.Abs(nextTarget.Z - currentTarget.Z) > 1e-6)
@@ -275,6 +285,11 @@ namespace IndexOverrideTest
                                 controller.StartIncAbs(Microsupport.AXIS.Z, nextTarget.Z);
                                 Console.WriteLine("[CP] Z-axis was idle. Started new move with StartIncAbs.");
                             }
+                        }
+                        else
+                        {
+                            controller.StopAxis(Microsupport.AXIS.Z);
+                            Console.WriteLine("[CP] Z-axis has no displacement. Commanding deceleration stop.");
                         }
 
                         overrideTriggered = true; // Exit loop and monitor next segment
