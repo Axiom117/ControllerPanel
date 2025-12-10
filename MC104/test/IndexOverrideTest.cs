@@ -52,11 +52,11 @@ namespace IndexOverrideTest
                 Console.WriteLine("Generating trajectory points...");
                 trajectoryPoints.Clear();
                 trajectoryPoints.Add(new TrajectoryPoint { X = 1000, Y = 1000, Z = 1000, Index = 0 });
-                trajectoryPoints.Add(new TrajectoryPoint { X = 1500, Y = 1500, Z = 1500, Index = 1 });
+                trajectoryPoints.Add(new TrajectoryPoint { X = 1500, Y = 1200, Z = 1500, Index = 1 });
                 trajectoryPoints.Add(new TrajectoryPoint { X = 2000, Y = 1500, Z = 2000, Index = 2 });
                 trajectoryPoints.Add(new TrajectoryPoint { X = 2500, Y = 2500, Z = 2500, Index = 3 });
                 trajectoryPoints.Add(new TrajectoryPoint { X = 3000, Y = 3000, Z = 3000, Index = 4 });
-                trajectoryPoints.Add(new TrajectoryPoint { X = 4000, Y = 3000, Z = 4000, Index = 5 });
+                trajectoryPoints.Add(new TrajectoryPoint { X = 4000, Y = 3500, Z = 4000, Index = 5 });
                 trajectoryPoints.Add(new TrajectoryPoint { X = 5000, Y = 4000, Z = 5000, Index = 6 });
 
                 // ==========================================
