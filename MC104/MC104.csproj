@@ -182,7 +182,9 @@
     <Content Include="Configs\microsupport_config.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <None Include="data\Trajectory_20251210_180356.csv" />
+    <None Include="data\Trajectory_20251210_180356.csv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Include="packages.config" />
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
