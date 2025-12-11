@@ -18,7 +18,6 @@
 using HpmcstdCs;
 using MC104.Models;
 using MC104.server;
-using MC104.test;
 using MicrosupportController;
 using System;
 using System.Collections.Generic;
@@ -47,10 +46,8 @@ namespace MC104
         private List<PictureBox> controllerIcons = new List<PictureBox>();
         private string selectedController = "";
 
-        private MC104.test.ServerTestPanel testPanel;
-
         /// The controllerServer object to manage the controller server operations.
-        private ControllerServer_v1 controllerServer;
+        private ControllerServer controllerServer;
 
         /// Range of movement for each axis in micrometers (um).
         private const double RANGE_X = 20000; // Motion range of X axis (um)
@@ -83,30 +80,10 @@ namespace MC104
             this.timer1.Interval = 500;
             this.timer1.Start();
 
-            OpenTestPanel();
-
-        }
-
-        private void OpenTestPanel()
-        {
-            // 检查测试窗口是否已经打开
-            if (testPanel == null || testPanel.IsDisposed)
-            {
-                testPanel = new MC104.test.ServerTestPanel();
-                testPanel.Show(); // 使用 Show() 而不是 ShowDialog() 以非模态方式显示
-            }
-            else
-            {
-                // 如果窗口已存在，将其带到前台
-                testPanel.BringToFront();
-                testPanel.WindowState = FormWindowState.Normal;
-            }
         }
 
         private void Form2_FormClosed(object sender, FormClosedEventArgs e)
         {
-            testPanel?.Close();
-
             /// Stop the timer
             if (this.timer1 != null)
             {
@@ -508,20 +485,20 @@ namespace MC104
         #endregion
 
         #region Server Control
-        private void StartControllerButton_Click(object sender, EventArgs e)
+        private void StartServerButton_Click(object sender, EventArgs e)
         {
             try
             {
                 // Start with mock server if mockMode is true, otherwise start the real server
-                controllerServer = new ControllerServer_v1(5000, mockMode: true);
+                controllerServer = new ControllerServer(5000, mockMode: true);
                 controllerServer.OnClientConnection += LogMessage;
                 controllerServer.OnTrajectoryReceived += OnTrajectoryReceived;
 
                 controllerServer.Start();
 
-                startControllerButton.Enabled = false;
-                startControllerButton.Text = "Controller Running";
-                startControllerButton.BackColor = Color.LightGray;
+                startServerButton.Enabled = false;
+                startServerButton.Text = "Running";
+                startServerButton.BackColor = Color.LightGreen;
 
                 UpdateStatus("Controller Server running on port 5000", Color.Yellow);
             }
@@ -529,6 +506,28 @@ namespace MC104
             {
                 LogMessage($"❌ Failed to start Controller Server: {ex.Message}");
                 MessageBox.Show($"Error: {ex.Message}", "Start Failed",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// Handles the click event for the Stop Server button, stopping the controller server and updating the user
+        /// interface to reflect the server's stopped state.
+        /// </summary>
+        private void StopServerButton_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                controllerServer.Stop();
+                startServerButton.Enabled = true;
+                startServerButton.Text = "Start";
+                startServerButton.BackColor = Color.LightGray;
+                UpdateStatus("Controller Server stopped", Color.Red);
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"❌ Failed to stop Controller Server: {ex.Message}");
+                MessageBox.Show($"Error: {ex.Message}", "Stop Failed",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
