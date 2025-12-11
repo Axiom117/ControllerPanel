@@ -785,7 +785,7 @@ namespace MC104
             }
 
             // In mock mode, we can assume MC1 and MC2. For real mode, you might need to select them.
-            _ = controllerServer.PathTracking("MC1", "MC2");
+            _ = controllerServer.PathTrackingCP("MC1", "MC2");
         }
         #endregion
     }

@@ -158,7 +158,6 @@
     <Compile Include="src\server\MockMatlabServer.cs" />
     <Compile Include="test\BufferTest.cs" />
     <Compile Include="test\IndexOverrideTest.cs" />
-    <Compile Include="test\CPTest.cs" />
     <EmbeddedResource Include="ControllerPanel.resx">
       <DependentUpon>ControllerPanel.cs</DependentUpon>
     </EmbeddedResource>
@@ -185,6 +184,8 @@
     <None Include="data\Trajectory_20251210_180356.csv">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Include="data\Trajectory_20_points.csv" />
+    <None Include="data\Trajectory_test.csv" />
     <None Include="packages.config" />
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>

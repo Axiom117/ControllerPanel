@@ -390,6 +390,25 @@ namespace MicrosupportController
         }
 
         /// <summary>
+        /// Converts a position specified in micrometers relative to the center of the stage to an absolute encoder
+        /// count for the specified axis.
+        /// </summary>
+        public int Um2encAbsFromCenter(AXIS axis, double umFromCenter)
+        {
+            switch (axis)
+            {
+                case AXIS.X:
+                    return (int)((umFromCenter + RANGE_X / 2) / RESOLUTIONS_AXIS_X);
+                case AXIS.Y:
+                    return (int)((umFromCenter + RANGE_Y / 2) / RESOLUTIONS_AXIS_Y);
+                case AXIS.Z:
+                    return (int)((-umFromCenter + RANGE_Z / 2) / RESOLUTIONS_AXIS_Z);
+                default:
+                    return 0;
+            }
+        }
+
+        /// <summary>
         /// Obtains the current positions (pulse) of the controller in encoder units.
         /// </summary>
         /// <return> An array of integers, where each element represents the position in encoder units </return>
@@ -715,6 +734,16 @@ namespace MicrosupportController
         }
 
         /// <summary>
+        /// Starts an incremental absolute move from the center position to the specified target position on the given axis.
+        /// </summary>
+        public uint StartIncAbsFromCenter(AXIS axis, double targetPositionFromCenter)
+        {
+            int targetPosEnc = Um2encAbsFromCenter(axis, targetPositionFromCenter);
+            return StartIncAbsEnc(axis, targetPosEnc);
+        }
+
+
+        /// <summary>
         /// Starts the absolute encoder movement for the specified axis to reach the target position. Note that GetPosition() is used as the reference point.
         /// </summary>
         public uint StartIncAbsEnc(AXIS axis, int targetPosition)
@@ -773,12 +802,20 @@ namespace MicrosupportController
         }
 
         /// Relative step movement from the current position of the axes. Origin is the center of the stoke.
-        public async Task StartAbsFromCenter(double x, double y, double z)
+        public async Task StartAbsFromCenterAsync(double x, double y, double z)
         {
 
             StartIncAbsAll(x + RANGE_X/2, y + RANGE_Y/2, -z + RANGE_Z/2);
 
             await Wait();
+        }
+
+        /// <summary>
+        /// Starts a movement to an absolute position from the center, but does not wait for completion.
+        /// </summary>
+        public void StartAbsFromCenter(double x, double y, double z)
+        {
+            StartIncAbsAll(x + RANGE_X / 2, y + RANGE_Y / 2, -z + RANGE_Z / 2);
         }
 
         /// <summary>

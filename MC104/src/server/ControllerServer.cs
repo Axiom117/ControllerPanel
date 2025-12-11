@@ -34,6 +34,9 @@ namespace MC104.server
 
         /// Configuration
         private readonly int localServerPort = 5000;
+        private const double BASE_SPEED_UM = 5000;  // 5 mm/s
+        private const double OVERRIDE_DISTANCE_THRESHOLD = 50.0; // um
+
 
         /// Active client connections
         private List<TcpClient> activeClients = new List<TcpClient>();
@@ -306,8 +309,8 @@ namespace MC104.server
                         if (parts.Length < 8)
                             return "ERROR, 101, Invalid parameters for START_STEP\n";
 
-                        string id1 = parts[1];
-                        string id2 = parts[2];
+                        string id1_step = parts[1];
+                        string id2_step = parts[2];
                         double x1_step = double.Parse(parts[3]);
                         double y1_step = double.Parse(parts[4]);
                         double z1_step = double.Parse(parts[5]);
@@ -315,7 +318,7 @@ namespace MC104.server
                         double y2_step = double.Parse(parts[7]);
                         double z2_step = double.Parse(parts[8]);
 
-                        return await StepAbsFromCenter(id1, id2, x1_step, y1_step, z1_step, x2_step, y2_step, z2_step);
+                        return await StepAbsFromCenter(id1_step, id2_step, x1_step, y1_step, z1_step, x2_step, y2_step, z2_step);
 
                     case "PATH_DATA":
                         return ProcessPathData(request);
@@ -338,6 +341,49 @@ namespace MC104.server
                             {
                                 /// Execute path tracking
                                 string result = await PathTracking(parts[1], parts[2]);
+
+                                /// Check if stream is still valid before sending
+                                if (stream.CanWrite)
+                                {
+                                    byte[] resultData = Encoding.UTF8.GetBytes(result);
+                                    await stream.WriteAsync(resultData, 0, resultData.Length);
+                                    await stream.FlushAsync();
+                                    NotifyClientConnection($"Controller Sent: {result.Trim()}");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                if (stream.CanWrite)
+                                {
+                                    string errorResult = $"ERROR, 104, Path tracking exception: {ex.Message}\n";
+                                    byte[] errorData = Encoding.UTF8.GetBytes(errorResult);
+                                    await stream.WriteAsync(errorData, 0, errorData.Length);
+                                    await stream.FlushAsync();
+                                    NotifyClientConnection($"Controller Sent: {errorResult.Trim()}");
+                                }
+                            }
+                        });
+
+                        /// Return empty string since we already sent the acknowledgment
+                        return string.Empty;
+                    case "START_PATH_CP":
+                        if (parts.Length < 3)
+                            return "ERROR, 101, Invalid parameters for START_PATH_CP\n";
+
+                        /// Send immediate acknowledgment
+                        string ackResponseCP = "PATH_TRACKING_CP_STARTED\n";
+                        byte[] ackDataCP = Encoding.UTF8.GetBytes(ackResponseCP);
+                        await stream.WriteAsync(ackDataCP, 0, ackDataCP.Length);
+                        await stream.FlushAsync();
+                        NotifyClientConnection($"Controller Sent: {ackResponseCP.Trim()}");
+
+                        /// Start path tracking asynchronously
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                /// Execute path tracking
+                                string result = await PathTrackingCP(parts[1], parts[2]);
 
                                 /// Check if stream is still valid before sending
                                 if (stream.CanWrite)
@@ -481,8 +527,8 @@ namespace MC104.server
 
                         /// Use Task.WhenAll to run both movements concurrently
                         await Task.WhenAll(
-                            controller1.StartAbsFromCenter(x1, y1, z1),
-                            controller2.StartAbsFromCenter(x2, y2, z2)
+                            controller1.StartAbsFromCenterAsync(x1, y1, z1),
+                            controller2.StartAbsFromCenterAsync(x2, y2, z2)
                         );
                     }
                     else
@@ -650,6 +696,166 @@ namespace MC104.server
                 isPathReady = false;
                 return $"ERROR, 104, Motion execution failure: {ex.Message}\n";
             }
+        }
+
+        /// <summary>
+        /// PathTrackingCP - Execute stored trajectory using Continuous Path (Index Override)
+        /// </summary>
+        public async Task<string> PathTrackingCP(string id1, string id2)
+        {
+            if (!isPathReady)
+                return "ERROR, 104, No path data ready for execution\n";
+
+            List<TrajectoryPoint> pointsToExecute;
+            lock (lockObject)
+            {
+                pointsToExecute = new List<TrajectoryPoint>(trajectoryData);
+            }
+
+            if (pointsToExecute.Count < 2)
+                return "ERROR, 104, Not enough points for CP trajectory.\n";
+
+            try
+            {
+                NotifyClientConnection("Starting CP path tracking...");
+
+                if (useMockControllers)
+                {
+                    NotifyClientConnection("[MOCK] CP mode is not supported, falling back to PTP.");
+                    return await PathTracking(id1, id2);
+                }
+
+                var controller1 = Microsupport.controllers[id1];
+                var controller2 = Microsupport.controllers[id2];
+
+                /// 1. Start first segment to kick off motion
+                var firstPoint = pointsToExecute[0];
+                NotifyClientConnection($"[CP] Launching initial move to Point 0.");
+                controller1.SetSpeedAll(BASE_SPEED_UM);
+                controller2.SetSpeedAll(BASE_SPEED_UM);
+
+                controller1.StartAbsFromCenter(firstPoint.X1, firstPoint.Y1, firstPoint.Z1);
+                controller2.StartAbsFromCenter(firstPoint.X2, firstPoint.Y2, firstPoint.Z2);
+
+
+                /// 2. Loop through each segment in the trajectory
+                for (int i = 0; i < pointsToExecute.Count - 1; i++)
+                {
+                    var currentTarget = pointsToExecute[i];
+                    var nextTarget = pointsToExecute[i + 1];
+
+                    NotifyClientConnection($"[CP] Segment {i}->{i + 1} running. Waiting for override window.");
+
+                    /// 3. Monitor position until reaching threshold
+                    bool overrideTriggered1 = false;
+                    bool overrideTriggered2 = false;
+                    while ((!overrideTriggered1 || !overrideTriggered2) && (controller1.IsBusy() || controller2.IsBusy()))
+                    {
+                        /// Controller 1
+                        if (!overrideTriggered1 && controller1.IsBusy())
+                        {
+                            double[] currentPos = await Task.Run(() => controller1.GetPositionsFromCenter());
+                            double dx = currentTarget.X1 - currentPos[0];
+                            double dy = currentTarget.Y1 - currentPos[1];
+                            double dz = currentTarget.Z1 - currentPos[2];
+                            double vectorDistance = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+
+                            if (vectorDistance < OVERRIDE_DISTANCE_THRESHOLD)
+                            {
+                                NotifyClientConnection($"[CP] {id1} threshold reached. Overriding to Point {i + 1}.");
+                                ApplyIndexOverride(controller1, currentTarget.X1, currentTarget.Y1, currentTarget.Z1, nextTarget.X1, nextTarget.Y1, nextTarget.Z1);
+                                overrideTriggered1 = true;
+                            }
+                        }
+                        else if (!overrideTriggered1) { overrideTriggered1 = true; } // Mark as done if not busy
+
+                        /// Controller 2
+                        if (!overrideTriggered2 && controller2.IsBusy())
+                        {
+                            double[] currentPos = await Task.Run(() => controller2.GetPositionsFromCenter());
+                            double dx = currentTarget.X2 - currentPos[0];
+                            double dy = currentTarget.Y2 - currentPos[1];
+                            double dz = currentTarget.Z2 - currentPos[2];
+                            double vectorDistance = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+
+                            if (vectorDistance < OVERRIDE_DISTANCE_THRESHOLD)
+                            {
+                                NotifyClientConnection($"[CP] {id2} threshold reached. Overriding to Point {i + 1}.");
+                                ApplyIndexOverride(controller2, currentTarget.X2, currentTarget.Y2, currentTarget.Z2, nextTarget.X2, nextTarget.Y2, nextTarget.Z2);
+                                overrideTriggered2 = true;
+                            }
+                        }
+                        else if (!overrideTriggered2) { overrideTriggered2 = true; } // Mark as done if not busy
+
+                        await Task.Delay(1);
+                    }
+
+                    NotifyClientConnection($"[CP] Segment {i}->{i + 1} override complete.");
+
+                    if (!controller1.IsBusy() && !controller2.IsBusy() && i < pointsToExecute.Count - 2)
+                    {
+                        NotifyClientConnection($"[CP] Motion stopped unexpectedly after segment {i}.");
+                        return $"ERROR, 104, Motion stopped unexpectedly during CP path.\n";
+                    }
+                }
+
+                /// Wait for the final segment to complete
+                await Task.WhenAll(controller1.Wait(), controller2.Wait());
+
+                isPathReady = false; // Path consumed
+                NotifyClientConnection("Path tracking completed");
+
+                return $"PATH_COMPLETED, {id1}, {id2}\n";
+            }
+            catch (Exception ex)
+            {
+                isPathReady = false;
+                return $"ERROR, 104, Motion execution failure: {ex.Message}\n";
+            }
+        }
+
+        private void ApplyIndexOverride(Microsupport controller, double currentX, double currentY, double currentZ, double nextX, double nextY, double nextZ)
+        {
+            const double MIN_SPEED_UM = 100.0;
+
+            /// Speed override logic
+            double nextDx = nextX - currentX;
+            double nextDy = nextY - currentY;
+            double nextDz = nextZ - currentZ;
+            double maxDisplacement = Math.Max(Math.Abs(nextDx), Math.Max(Math.Abs(nextDy), Math.Abs(nextDz)));
+
+            if (maxDisplacement > 1e-6)
+            {
+                double speedX = BASE_SPEED_UM * (Math.Abs(nextDx) / maxDisplacement);
+                double speedY = BASE_SPEED_UM * (Math.Abs(nextDy) / maxDisplacement);
+                double speedZ = BASE_SPEED_UM * (Math.Abs(nextDz) / maxDisplacement);
+
+                if (Math.Abs(nextDx) > 1e-6) controller.SpeedOverride(Microsupport.AXIS.X, (uint)Math.Max(speedX, MIN_SPEED_UM));
+                if (Math.Abs(nextDy) > 1e-6) controller.SpeedOverride(Microsupport.AXIS.Y, (uint)Math.Max(speedY, MIN_SPEED_UM));
+                if (Math.Abs(nextDz) > 1e-6) controller.SpeedOverride(Microsupport.AXIS.Z, (uint)Math.Max(speedZ, MIN_SPEED_UM));
+            }
+
+            /// Index override logic
+            if (Math.Abs(nextDx) > 1e-6)
+            {
+                if (controller.IsBusy(Microsupport.AXIS.X)) controller.IndexOverride(Microsupport.AXIS.X, (uint)controller.Um2encAbsFromCenter(Microsupport.AXIS.X, nextX));
+                else controller.StartIncAbs(Microsupport.AXIS.X, nextX + controller.GetPositionsFromCenter()[0]);
+            }
+            else { controller.StopAxis(Microsupport.AXIS.X); }
+
+            if (Math.Abs(nextDy) > 1e-6)
+            {
+                if (controller.IsBusy(Microsupport.AXIS.Y)) controller.IndexOverride(Microsupport.AXIS.Y, (uint)controller.Um2encAbsFromCenter(Microsupport.AXIS.Y, nextY));
+                else controller.StartIncAbs(Microsupport.AXIS.Y, nextY + controller.GetPositionsFromCenter()[1]);
+            }
+            else { controller.StopAxis(Microsupport.AXIS.Y); }
+
+            if (Math.Abs(nextDz) > 1e-6)
+            {
+                if (controller.IsBusy(Microsupport.AXIS.Z)) controller.IndexOverride(Microsupport.AXIS.Z, (uint)controller.Um2encAbsFromCenter(Microsupport.AXIS.Z, nextZ));
+                else controller.StartIncAbs(Microsupport.AXIS.Z, nextZ + controller.GetPositionsFromCenter()[2]);
+            }
+            else { controller.StopAxis(Microsupport.AXIS.Z); }
         }
 
         #endregion

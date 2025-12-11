@@ -1,6 +1,5 @@
 ﻿using HpmcstdCs;
 using MicrosupportController;
-using SmoothTrajectoryTest;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -52,12 +51,12 @@ namespace IndexOverrideTest
                 Console.WriteLine("Generating trajectory points...");
                 trajectoryPoints.Clear();
                 trajectoryPoints.Add(new TrajectoryPoint { X = 1000, Y = 1000, Z = 1000, Index = 0 });
-                trajectoryPoints.Add(new TrajectoryPoint { X = 1500, Y = 1200, Z = 1500, Index = 1 });
-                trajectoryPoints.Add(new TrajectoryPoint { X = 2000, Y = 1500, Z = 2000, Index = 2 });
+                trajectoryPoints.Add(new TrajectoryPoint { X = 1500, Y = 1500, Z = 1500, Index = 1 });
+                trajectoryPoints.Add(new TrajectoryPoint { X = 2000, Y = 2000, Z = 2000, Index = 2 });
                 trajectoryPoints.Add(new TrajectoryPoint { X = 2500, Y = 2500, Z = 2500, Index = 3 });
                 trajectoryPoints.Add(new TrajectoryPoint { X = 3000, Y = 3000, Z = 3000, Index = 4 });
-                trajectoryPoints.Add(new TrajectoryPoint { X = 4000, Y = 3500, Z = 4000, Index = 5 });
-                trajectoryPoints.Add(new TrajectoryPoint { X = 5000, Y = 4000, Z = 5000, Index = 6 });
+                trajectoryPoints.Add(new TrajectoryPoint { X = 4000, Y = 4000, Z = 4000, Index = 5 });
+                trajectoryPoints.Add(new TrajectoryPoint { X = 5000, Y = 5000, Z = 5000, Index = 6 });
 
                 // ==========================================
                 // TEST 1: Baseline PTP (Point-to-Point)
@@ -220,9 +219,9 @@ namespace IndexOverrideTest
                             /// Ensure speeds are not below a minimum threshold to prevent stalling.
                             const double MIN_SPEED_UM = 100.0;
                             /// 4. Apply HiSpeedOverride for each axis where there is displacement.
-                            if (Math.Abs(nextDx) > 1e-6) controller.HiSpeedOverride(Microsupport.AXIS.X, Math.Max(speedX, MIN_SPEED_UM));
-                            if (Math.Abs(nextDy) > 1e-6) controller.HiSpeedOverride(Microsupport.AXIS.Y, Math.Max(speedY, MIN_SPEED_UM));
-                            if (Math.Abs(nextDz) > 1e-6) controller.HiSpeedOverride(Microsupport.AXIS.Z, Math.Max(speedZ, MIN_SPEED_UM));
+                            if (Math.Abs(nextDx) > 1e-6) controller.SpeedOverride(Microsupport.AXIS.X, (uint)Math.Max(speedX, MIN_SPEED_UM));
+                            if (Math.Abs(nextDy) > 1e-6) controller.SpeedOverride(Microsupport.AXIS.Y, (uint)Math.Max(speedY, MIN_SPEED_UM));
+                            if (Math.Abs(nextDz) > 1e-6) controller.SpeedOverride(Microsupport.AXIS.Z, (uint)Math.Max(speedZ, MIN_SPEED_UM));
 
                             Console.WriteLine($"[CP] Speeds adjusted for next segment: X={speedX:F0}, Y={speedY:F0}, Z={speedZ:F0} um/s");
                         }
