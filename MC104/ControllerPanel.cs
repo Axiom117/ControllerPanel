@@ -489,8 +489,8 @@ namespace MC104
         {
             try
             {
-                // Start with mock server if mockMode is true, otherwise start the real server
-                controllerServer = new ControllerServer(5000, mockMode: true);
+                /// Start with mock server if mockMode is true, otherwise start the real server
+                controllerServer = new ControllerServer(5000, mockMode: false);
                 controllerServer.OnClientConnection += LogMessage;
                 controllerServer.OnTrajectoryReceived += OnTrajectoryReceived;
 
@@ -667,6 +667,53 @@ namespace MC104
                 Application.Exit();
                 return;
             }
+        }
+
+        /// <summary>
+        /// Handles the Click event of the Load Path Data button, allowing the user to select and load a path data file
+        /// into the server.
+        /// </summary>
+        private void loadPathDataButton_Click(object sender, EventArgs e)
+        {
+            if (controllerServer == null)
+            {
+                MessageBox.Show("Please start the server first.", "Server Not Running", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            using (OpenFileDialog openFileDialog = new OpenFileDialog())
+            {
+                string initialDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, pathDataLocation.Text);
+                if (!Directory.Exists(initialDirectory))
+                {
+                    Directory.CreateDirectory(initialDirectory);
+                }
+                openFileDialog.InitialDirectory = initialDirectory;
+                openFileDialog.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*";
+                openFileDialog.FilterIndex = 1;
+                openFileDialog.RestoreDirectory = true;
+
+                if (openFileDialog.ShowDialog() == DialogResult.OK)
+                {
+                    string filePath = openFileDialog.FileName;
+                    controllerServer.LoadPathDataFromFile(filePath);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Handles the Click event of the Start Path Tracking button, initiating path tracking between two controllers.
+        /// </summary>
+        private void startPathTrackingButton_Click(object sender, EventArgs e)
+        {
+            if (controllerServer == null)
+            {
+                MessageBox.Show("Please start the server first.", "Server Not Running", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // In mock mode, we can assume MC1 and MC2. For real mode, you might need to select them.
+            _ = controllerServer.PathTracking("MC1", "MC2");
         }
         #endregion
     }
