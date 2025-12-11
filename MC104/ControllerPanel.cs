@@ -74,6 +74,8 @@ namespace MC104
 
         private void Form2_Load(object sender, EventArgs e)
         {
+            /// Populate the path data list box on startup
+            RefreshPathDataList();
 
             /// Register the TickTimerEvent to the timeline and trigger it for every 500 ms.
             this.timer1.Tick += new EventHandler(TickTimerEvent);
@@ -282,10 +284,15 @@ namespace MC104
                 }
                 else
                 {
-                    foreach (var icon in controllerIcons)
+                    // Deselect all icons first
+                    foreach (Control control in Devices.Controls)
                     {
-                        icon.BackColor = Color.LightGray;
+                        if (control is PictureBox)
+                        {
+                            control.BackColor = Color.LightGray;
+                        }
                     }
+                    // Select the clicked icon
                     clickedIcon.BackColor = Color.LightBlue;
                     selectedController = controllerId;
                 }
@@ -489,8 +496,8 @@ namespace MC104
         {
             try
             {
-                // Start with mock server if mockMode is true, otherwise start the real server
-                controllerServer = new ControllerServer(5000, mockMode: true);
+                /// Start with mock server if mockMode is true, otherwise start the real server
+                controllerServer = new ControllerServer(5000, mockMode: false);
                 controllerServer.OnClientConnection += LogMessage;
                 controllerServer.OnTrajectoryReceived += OnTrajectoryReceived;
 
@@ -499,6 +506,10 @@ namespace MC104
                 startServerButton.Enabled = false;
                 startServerButton.Text = "Running";
                 startServerButton.BackColor = Color.LightGreen;
+                stopServerButton.Enabled = true;
+                loadPathDataButton.Enabled = true;
+                startPathTrackingButton.Enabled = true;
+                addPathDataButton.Enabled = true;
 
                 UpdateStatus("Controller Server running on port 5000", Color.Yellow);
             }
@@ -522,6 +533,11 @@ namespace MC104
                 startServerButton.Enabled = true;
                 startServerButton.Text = "Start";
                 startServerButton.BackColor = Color.LightGray;
+                stopServerButton.Enabled = false;
+                loadPathDataButton.Enabled = false;
+                startPathTrackingButton.Enabled = false;
+                addPathDataButton.Enabled = false;
+
                 UpdateStatus("Controller Server stopped", Color.Red);
             }
             catch (Exception ex)
@@ -667,6 +683,109 @@ namespace MC104
                 Application.Exit();
                 return;
             }
+        }
+
+        /// <summary>
+        /// Refreshes the list of available path data files displayed in the user interface.
+        /// </summary>
+        private void RefreshPathDataList()
+        {
+            try
+            {
+                string dataDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data");
+                if (!Directory.Exists(dataDirectory))
+                {
+                    Directory.CreateDirectory(dataDirectory);
+                }
+
+                pathDataListBox.Items.Clear();
+
+                var csvFiles = Directory.GetFiles(dataDirectory, "*.csv")
+                                        .Select(Path.GetFileName)
+                                        .ToArray();
+
+                pathDataListBox.Items.AddRange(csvFiles);
+                LogMessage($"Found {csvFiles.Length} path data files in 'data/' directory.");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"ERROR: Could not refresh path data list: {ex.Message}");
+            }
+        }
+
+        private void addPathDataButton_Click(object sender, EventArgs e)
+        {
+            using (OpenFileDialog openFileDialog = new OpenFileDialog())
+            {
+                openFileDialog.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*";
+                openFileDialog.Title = "Add Path Data File";
+
+                if (openFileDialog.ShowDialog() == DialogResult.OK)
+                {
+                    try
+                    {
+                        string sourceFile = openFileDialog.FileName;
+                        string dataDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data");
+                        string destinationFile = Path.Combine(dataDirectory, Path.GetFileName(sourceFile));
+
+                        if (!Directory.Exists(dataDirectory))
+                        {
+                            Directory.CreateDirectory(dataDirectory);
+                        }
+
+                        File.Copy(sourceFile, destinationFile, true); // true to overwrite if exists
+                        LogMessage($"Successfully added '{Path.GetFileName(sourceFile)}' to data directory.");
+
+                        RefreshPathDataList();
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Error adding file: {ex.Message}", "File Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        LogMessage($"ERROR: Failed to add file. {ex.Message}");
+                    }
+                }
+            }
+        }
+
+        private void loadPathDataButton_Click(object sender, EventArgs e)
+        {
+            if (controllerServer == null)
+            {
+                MessageBox.Show("Please start the server first.", "Server Not Running", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (pathDataListBox.SelectedItem == null)
+            {
+                MessageBox.Show("Please select a path data file from the list.", "No File Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            try
+            {
+                string fileName = pathDataListBox.SelectedItem.ToString();
+                string dataDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data");
+                string filePath = Path.Combine(dataDirectory, fileName);
+
+                controllerServer.LoadPathDataFromFile(filePath);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading file: {ex.Message}", "File Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                LogMessage($"ERROR: Failed to load path file. {ex.Message}");
+            }
+        }
+
+        private void startPathTrackingButton_Click(object sender, EventArgs e)
+        {
+            if (controllerServer == null)
+            {
+                MessageBox.Show("Please start the server first.", "Server Not Running", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // In mock mode, we can assume MC1 and MC2. For real mode, you might need to select them.
+            _ = controllerServer.PathTracking("MC1", "MC2");
         }
         #endregion
     }

@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Linq;
 using System.Numerics;
+using System.IO;
 
 namespace MC104.server
 {
@@ -302,16 +303,19 @@ namespace MC104.server
                         return await SendStatus(parts[1], parts[2]);
 
                     case "START_STEP":
-                        if (parts.Length < 6)
+                        if (parts.Length < 8)
                             return "ERROR, 101, Invalid parameters for START_STEP\n";
 
                         string id1 = parts[1];
                         string id2 = parts[2];
-                        double x = double.Parse(parts[3]);
-                        double y = double.Parse(parts[4]);
-                        double z = double.Parse(parts[5]);
+                        double x1_step = double.Parse(parts[3]);
+                        double y1_step = double.Parse(parts[4]);
+                        double z1_step = double.Parse(parts[5]);
+                        double x2_step = double.Parse(parts[6]);
+                        double y2_step = double.Parse(parts[7]);
+                        double z2_step = double.Parse(parts[8]);
 
-                        return await StepAbsFromCenter(id1, id2, x, y, z, x, y, z);
+                        return await StepAbsFromCenter(id1, id2, x1_step, y1_step, z1_step, x2_step, y2_step, z2_step);
 
                     case "PATH_DATA":
                         return ProcessPathData(request);
@@ -438,7 +442,8 @@ namespace MC104.server
             try
             {
                 /// Validate bounds (example: XY: ±20000um, Z: ±30000um)
-                if (Math.Abs(x1) > 20000 || Math.Abs(y1) > 20000 || Math.Abs(z1) > 30000)
+                if (Math.Abs(x1) > 20000 || Math.Abs(y1) > 20000 || Math.Abs(z1) > 30000 ||
+                    Math.Abs(x2) > 20000 || Math.Abs(y2) > 20000 || Math.Abs(z2) > 30000)
                 {
                     return "ERROR, 101, Movement out of bounds\n";
                 }
@@ -457,7 +462,7 @@ namespace MC104.server
                         controller.Y = y2;
                         controller.Z = z2;
 
-                        NotifyClientConnection($"[MOCK] Incremental move {id1}: ΔX1={x1:F2}, ΔY1={y1:F2}, ΔZ1={z1:F2}.\n {id2}: ΔX1={x2:F2}, ΔY1={y2:F2}, ΔZ1={z2:F2}");
+                        NotifyClientConnection($"[MOCK] Absolute move {id1}: X1={x1:F2}, Y1={y1:F2}, Z1={z1:F2}.\n {id2}: X2={x2:F2}, Y2={y2:F2}, Z2={z2:F2}");
 
                         /// Simulate movement time
                         await Task.Delay(10);
@@ -508,48 +513,8 @@ namespace MC104.server
                     return "ERROR, 103, Invalid PATH_DATA format\n";
 
                 string payload = rawData.Substring(firstComma + 1).Trim();
-                string[] values = payload.Split(',').Select(v => v.Trim()).ToArray();
 
-                /// Validate at least trajectory data are present
-                if (values.Length < 6)
-                    return "ERROR, 103, PATH_DATA must include at least one trajectory data\n";
-
-
-                /// Validate: must be groups of 6 floats
-                if (values.Length % 6 != 0)
-                    return "ERROR, 103, Trajectory data must contain groups of 6 values\n";
-
-                /// Parse trajectory points, use lockObject for thread safety
-                lock (lockObject)
-                {
-                    /// Clear existing data
-                    trajectoryData.Clear();
-                    /// Calculate number of points
-                    int numPoints = values.Length / 6;
-
-                    /// Parse each trajectory point
-                    for (int i = 0; i < numPoints; i++)
-                    {
-                        int idx = i * 6;
-                        TrajectoryPoint point = new TrajectoryPoint
-                        {
-                            X1 = double.Parse(values[idx]),
-                            Y1 = double.Parse(values[idx + 1]),
-                            Z1 = double.Parse(values[idx + 2]),
-                            X2 = double.Parse(values[idx + 3]),
-                            Y2 = double.Parse(values[idx + 4]),
-                            Z2 = double.Parse(values[idx + 5]),
-                            Index = i
-                        };
-                        trajectoryData.Add(point);
-                    }
-
-                    isPathReady = true;
-                    NotifyClientConnection($"Parsed {numPoints} trajectory points");
-                }
-
-                /// Trigger event
-                OnTrajectoryReceived?.Invoke(trajectoryData.Count);
+                ParseAndStoreTrajectory(payload);
 
                 /// Send both responses
                 return "PATH_DATA_RECEIVED\n";
@@ -562,9 +527,80 @@ namespace MC104.server
         }
 
         /// <summary>
+        /// Loads trajectory data from a local CSV file and stores it for execution.
+        /// </summary>
+        public void LoadPathDataFromFile(string filePath)
+        {
+            try
+            {
+                NotifyClientConnection($"Loading path data from: {Path.GetFileName(filePath)}");
+
+                // Read all lines, skip the header, and join the rest into a single comma-separated string.
+                string payload = string.Join(",", File.ReadAllLines(filePath).Skip(1));
+
+                ParseAndStoreTrajectory(payload);
+            }
+            catch (Exception ex)
+            {
+                isPathReady = false;
+                NotifyClientConnection($"ERROR: Failed to load path from file. {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Parses a string of comma-separated values into trajectory points and stores them.
+        /// </summary>
+        private void ParseAndStoreTrajectory(string payload)
+        {
+            string[] values = payload.Split(new[] { ',', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                                     .Select(v => v.Trim())
+                                     .ToArray();
+
+            /// Validate at least trajectory data are present
+            if (values.Length < 6)
+                throw new FormatException("PATH_DATA must include at least one trajectory point (6 values).");
+
+            /// Validate: must be groups of 6 floats
+            if (values.Length % 6 != 0)
+                throw new FormatException("Trajectory data must contain groups of 6 values.");
+
+            /// Parse trajectory points, use lockObject for thread safety
+            lock (lockObject)
+            {
+                /// Clear existing data
+                trajectoryData.Clear();
+                /// Calculate number of points
+                int numPoints = values.Length / 6;
+
+                /// Parse each trajectory point
+                for (int i = 0; i < numPoints; i++)
+                {
+                    int idx = i * 6;
+                    TrajectoryPoint point = new TrajectoryPoint
+                    {
+                        X1 = double.Parse(values[idx]),
+                        Y1 = double.Parse(values[idx + 1]),
+                        Z1 = double.Parse(values[idx + 2]),
+                        X2 = double.Parse(values[idx + 3]),
+                        Y2 = double.Parse(values[idx + 4]),
+                        Z2 = double.Parse(values[idx + 5]),
+                        Index = i
+                    };
+                    trajectoryData.Add(point);
+                }
+
+                isPathReady = true;
+                NotifyClientConnection($"Parsed {numPoints} trajectory points. Path is ready.");
+            }
+
+            /// Trigger event
+            OnTrajectoryReceived?.Invoke(trajectoryData.Count);
+        }
+
+        /// <summary>
         /// PathTracking - Execute stored trajectory
         /// </summary>
-        private async Task<string> PathTracking(string id1, string id2)
+        public async Task<string> PathTracking(string id1, string id2)
         {
             if (!isPathReady)
                 return "ERROR, 104, No path data ready for execution\n";
@@ -573,25 +609,35 @@ namespace MC104.server
             {
                 NotifyClientConnection("Starting path tracking...");
 
-                var controller1 = Microsupport.controllers[id1];
-                var controller2 = Microsupport.controllers[id2];
-
-                controller1.SetSpeedAll(5000);
-                controller2.SetSpeedAll(5000);
-
-                foreach (var point in trajectoryData)
+                if (!useMockControllers)
                 {
-                    /// Move two manipulators incrementally
-                    string result1 = await StepAbsFromCenter(id1, id2, point.X1, point.Y1, point.Z1, point.X2, point.Y2, point.Z2);
-                    if (result1.StartsWith("ERROR"))
+                    var controller1 = Microsupport.controllers[id1];
+                    var controller2 = Microsupport.controllers[id2];
+
+                    controller1.SetSpeedAll(5000);
+                    controller2.SetSpeedAll(5000);
+                }
+
+                /// Copy trajectory data locally to avoid locking during execution
+                List<TrajectoryPoint> pointsToExecute;
+                lock (lockObject)
+                {
+                    pointsToExecute = new List<TrajectoryPoint>(trajectoryData);
+                }
+
+                foreach (var point in pointsToExecute)
+                {
+                    /// Move two manipulators to absolute positions from center
+                    string result = await StepAbsFromCenter(id1, id2, point.X1, point.Y1, point.Z1, point.X2, point.Y2, point.Z2);
+                    if (result.StartsWith("ERROR"))
                     {
                         isPathReady = false;
-                        return result1;
+                        return result;
                     }
 
                     /// Progress notification
                     if (point.Index % 10 == 0)
-                        NotifyClientConnection($"Path progress: {point.Index + 1}/{trajectoryData.Count}");
+                        NotifyClientConnection($"Path progress: {point.Index + 1}/{pointsToExecute.Count}");
                 }
 
                 isPathReady = false; // Path consumed
