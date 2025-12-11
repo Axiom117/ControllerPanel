@@ -160,9 +160,6 @@
     <Compile Include="test\BufferTest.cs" />
     <Compile Include="test\IndexOverrideTest.cs" />
     <Compile Include="test\CPTest.cs" />
-    <Compile Include="test\integration_test.cs">
-      <SubType>Form</SubType>
-    </Compile>
     <EmbeddedResource Include="ControllerPanel.resx">
       <DependentUpon>ControllerPanel.cs</DependentUpon>
     </EmbeddedResource>

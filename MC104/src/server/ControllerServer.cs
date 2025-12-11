@@ -557,8 +557,8 @@ namespace MC104.server
                 var controller1 = Microsupport.controllers[id1];
                 var controller2 = Microsupport.controllers[id2];
 
-                controller1.SetSpeedAll(10000);
-                controller2.SetSpeedAll(10000);
+                controller1.SetSpeedAll(5000);
+                controller2.SetSpeedAll(5000);
 
                 foreach (var point in trajectoryData)
                 {
