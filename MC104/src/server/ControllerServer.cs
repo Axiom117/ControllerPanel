@@ -84,6 +84,9 @@ namespace MC104.server
             }
         }
 
+        /// <summary>
+        /// Starts the server and begins accepting incoming client connections.
+        /// </summary>
         public void Start()
         {
             server.Start();
@@ -95,12 +98,15 @@ namespace MC104.server
             Task.Run(() => AcceptClients(cancellationTokenSource.Token));
         }
 
+        /// <summary>
+        /// Stops the server and terminates all active client connections.
+        /// </summary>
         public void Stop()
         {
             isRunning = false;
             cancellationTokenSource?.Cancel();
 
-            // Close all active client connections
+            /// Close all active client connections
             lock (activeClients)
             {
                 foreach (var client in activeClients)
@@ -120,13 +126,17 @@ namespace MC104.server
         #endregion
 
         #region Connection handling
+        /// <summary>
+        /// Asynchronously accepts incoming TCP client connections until cancellation is requested or the server is
+        /// stopped.
+        /// </summary>
         private async Task AcceptClients(CancellationToken cancellationToken)
         {
             while (isRunning && !cancellationToken.IsCancellationRequested)
             {
                 try
                 {
-                    // Use AcceptTcpClientAsync with cancellation
+                    /// Use AcceptTcpClientAsync with cancellation
                     var tcpClientTask = server.AcceptTcpClientAsync();
                     var tcs = new TaskCompletionSource<bool>();
 
@@ -138,7 +148,7 @@ namespace MC104.server
                         {
                             TcpClient client = tcpClientTask.Result;
 
-                            // Add to active clients list
+                            /// Add to active clients list
                             lock (activeClients)
                             {
                                 activeClients.Add(client);
@@ -146,19 +156,19 @@ namespace MC104.server
 
                             NotifyClientConnection($"PathPlanner client connected from {client.Client.RemoteEndPoint}");
 
-                            // Handle each client in separate task
+                            /// Handle each client in separate task
                             _ = Task.Run(async () => await HandleClient(client, cancellationToken));
                         }
                     }
                 }
                 catch (ObjectDisposedException)
                 {
-                    // Server was stopped
+                    /// Server was stopped
                     break;
                 }
                 catch (OperationCanceledException)
                 {
-                    // Cancellation requested
+                    /// Cancellation requested
                     break;
                 }
                 catch (Exception ex)
@@ -169,6 +179,10 @@ namespace MC104.server
             }
         }
 
+        /// <summary>
+        /// Handles communication with a connected TCP client, processing incoming requests and sending responses
+        /// asynchronously.
+        /// </summary>
         private async Task HandleClient(TcpClient client, CancellationToken cancellationToken)
         {
             NetworkStream stream = null;
@@ -183,30 +197,30 @@ namespace MC104.server
                 {
                     try
                     {
-                        // Check if client is still connected
+                        /// Check if client is still connected
                         if (!IsSocketConnected(client.Client))
                         {
                             break;
                         }
 
-                        // Read data with timeout
+                        /// Read data with timeout
                         var readTask = stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
                         var bytesRead = await readTask;
 
                         if (bytesRead == 0)
                         {
-                            // Client disconnected gracefully
+                            /// Client disconnected gracefully
                             break;
                         }
 
-                        // Decode request
+                        /// Decode request
                         string request = Encoding.UTF8.GetString(buffer, 0, bytesRead).Trim();
                         NotifyClientConnection($"Controller Received: {request.Substring(0, Math.Min(100, request.Length))}...");
 
-                        // Process request and get response
-                        string response = await ProcessPathPlannerRequest(request, stream);
+                        /// Process request and get response
+                        string response = await ProcessRequest(request, stream);
 
-                        // Send response only if not empty (START_PATH already sent its acknowledgment)
+                        /// Send response only if not empty (START_PATH already sent its acknowledgment)
                         if (!string.IsNullOrEmpty(response))
                         {
                             byte[] responseData = Encoding.UTF8.GetBytes(response);
@@ -217,7 +231,7 @@ namespace MC104.server
                     }
                     catch (System.IO.IOException ioEx)
                     {
-                        // Read timeout or connection issue
+                        /// Read timeout or connection issue
                         if (!IsSocketConnected(client.Client))
                         {
                             break;
@@ -227,7 +241,7 @@ namespace MC104.server
             }
             catch (OperationCanceledException)
             {
-                // Server is shutting down
+                /// Server is shutting down
             }
             catch (Exception ex)
             {
@@ -235,7 +249,7 @@ namespace MC104.server
             }
             finally
             {
-                // Remove from active clients and close connection
+                /// Remove from active clients and close connection
                 lock (activeClients)
                 {
                     activeClients.Remove(client);
@@ -267,7 +281,10 @@ namespace MC104.server
             }
         }
 
-        private async Task<string> ProcessPathPlannerRequest(string request, NetworkStream stream)
+        /// <summary>
+        /// Processes a path planner request received from a client and returns the appropriate response message.
+        /// </summary>
+        private async Task<string> ProcessRequest(string request, NetworkStream stream)
         {
             try
             {
@@ -303,22 +320,22 @@ namespace MC104.server
                         if (parts.Length < 3)
                             return "ERROR, 101, Invalid parameters for START_PATH\n";
 
-                        // Send immediate acknowledgment
+                        /// Send immediate acknowledgment
                         string ackResponse = "PATH_TRACKING_STARTED\n";
                         byte[] ackData = Encoding.UTF8.GetBytes(ackResponse);
                         await stream.WriteAsync(ackData, 0, ackData.Length);
                         await stream.FlushAsync();
                         NotifyClientConnection($"Controller Sent: {ackResponse.Trim()}");
 
-                        // Start path tracking asynchronously
+                        /// Start path tracking asynchronously
                         _ = Task.Run(async () =>
                         {
                             try
                             {
-                                // Execute path tracking
+                                /// Execute path tracking
                                 string result = await PathTracking(parts[1], parts[2]);
 
-                                // Check if stream is still valid before sending
+                                /// Check if stream is still valid before sending
                                 if (stream.CanWrite)
                                 {
                                     byte[] resultData = Encoding.UTF8.GetBytes(result);
@@ -340,7 +357,7 @@ namespace MC104.server
                             }
                         });
 
-                        // Return empty string since we already sent the acknowledgment
+                        /// Return empty string since we already sent the acknowledgment
                         return string.Empty;
 
                     default:
@@ -420,7 +437,7 @@ namespace MC104.server
         {
             try
             {
-                // Validate bounds (example: XY: ±20000um, Z: ±30000um)
+                /// Validate bounds (example: XY: ±20000um, Z: ±30000um)
                 if (Math.Abs(x1) > 20000 || Math.Abs(y1) > 20000 || Math.Abs(z1) > 30000)
                 {
                     return "ERROR, 101, Movement out of bounds\n";
@@ -442,7 +459,7 @@ namespace MC104.server
 
                         NotifyClientConnection($"[MOCK] Incremental move {id1}: ΔX1={x1:F2}, ΔY1={y1:F2}, ΔZ1={z1:F2}.\n {id2}: ΔX1={x2:F2}, ΔY1={y2:F2}, ΔZ1={z2:F2}");
 
-                        // Simulate movement time
+                        /// Simulate movement time
                         await Task.Delay(10);
                     }
                     else
@@ -457,7 +474,7 @@ namespace MC104.server
                         var controller1 = Microsupport.controllers[id1];
                         var controller2 = Microsupport.controllers[id2];
 
-                        // Use Task.WhenAll to run both movements concurrently
+                        /// Use Task.WhenAll to run both movements concurrently
                         await Task.WhenAll(
                             controller1.StartAbsFromCenter(x1, y1, z1),
                             controller2.StartAbsFromCenter(x2, y2, z2)
@@ -469,7 +486,7 @@ namespace MC104.server
                     }
                 }
 
-                // After successful move, send updated status
+                /// After successful move, send updated status
                 return $"STEP_COMPLETED, {id1}, {id2}\n";
             }
             catch (Exception ex)
@@ -485,7 +502,7 @@ namespace MC104.server
         {
             try
             {
-                // Remove "PATH_DATA," prefix
+                /// Remove "PATH_DATA," prefix
                 int firstComma = rawData.IndexOf(',');
                 if (firstComma == -1)
                     return "ERROR, 103, Invalid PATH_DATA format\n";
@@ -493,25 +510,27 @@ namespace MC104.server
                 string payload = rawData.Substring(firstComma + 1).Trim();
                 string[] values = payload.Split(',').Select(v => v.Trim()).ToArray();
 
-                // Validate at least two IDs and trajectory data are present
-                if (values.Length < 2)
-                    return "ERROR, 103, PATH_DATA must include two IDs and trajectory data\n";
+                /// Validate at least trajectory data are present
+                if (values.Length < 6)
+                    return "ERROR, 103, PATH_DATA must include at least one trajectory data\n";
 
-                string id1 = values[0];
-                string id2 = values[1];
 
-                // Validate: must be groups of 6 floats
-                if ((values.Length - 2) % 6 != 0)
+                /// Validate: must be groups of 6 floats
+                if (values.Length % 6 != 0)
                     return "ERROR, 103, Trajectory data must contain groups of 6 values\n";
 
+                /// Parse trajectory points, use lockObject for thread safety
                 lock (lockObject)
                 {
+                    /// Clear existing data
                     trajectoryData.Clear();
-                    int numPoints = (values.Length - 2) / 6;
+                    /// Calculate number of points
+                    int numPoints = values.Length / 6;
 
+                    /// Parse each trajectory point
                     for (int i = 0; i < numPoints; i++)
                     {
-                        int idx = 2 + i * 6;
+                        int idx = i * 6;
                         TrajectoryPoint point = new TrajectoryPoint
                         {
                             X1 = double.Parse(values[idx]),
@@ -529,10 +548,10 @@ namespace MC104.server
                     NotifyClientConnection($"Parsed {numPoints} trajectory points");
                 }
 
-                // Trigger event
+                /// Trigger event
                 OnTrajectoryReceived?.Invoke(trajectoryData.Count);
 
-                // Send both responses
+                /// Send both responses
                 return "PATH_DATA_RECEIVED\n";
             }
             catch (Exception ex)
@@ -562,7 +581,7 @@ namespace MC104.server
 
                 foreach (var point in trajectoryData)
                 {
-                    // Move two manipulators incrementally
+                    /// Move two manipulators incrementally
                     string result1 = await StepAbsFromCenter(id1, id2, point.X1, point.Y1, point.Z1, point.X2, point.Y2, point.Z2);
                     if (result1.StartsWith("ERROR"))
                     {
@@ -570,7 +589,7 @@ namespace MC104.server
                         return result1;
                     }
 
-                    // Progress notification
+                    /// Progress notification
                     if (point.Index % 10 == 0)
                         NotifyClientConnection($"Path progress: {point.Index + 1}/{trajectoryData.Count}");
                 }
