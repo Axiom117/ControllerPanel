@@ -185,7 +185,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Include="data\Trajectory_20_points.csv" />
-    <None Include="data\Trajectory_test.csv" />
+    <None Include="data\Trajectory_test.csv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Include="packages.config" />
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>

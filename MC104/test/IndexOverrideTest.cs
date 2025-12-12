@@ -54,7 +54,7 @@ namespace IndexOverrideTest
                 trajectoryPoints.Add(new TrajectoryPoint { X = 1500, Y = 1500, Z = 1500, Index = 1 });
                 trajectoryPoints.Add(new TrajectoryPoint { X = 2000, Y = 2000, Z = 2000, Index = 2 });
                 trajectoryPoints.Add(new TrajectoryPoint { X = 2500, Y = 2500, Z = 2500, Index = 3 });
-                trajectoryPoints.Add(new TrajectoryPoint { X = 3000, Y = 3000, Z = 3000, Index = 4 });
+                trajectoryPoints.Add(new TrajectoryPoint { X = 4000, Y = 3000, Z = 3000, Index = 4 });
                 trajectoryPoints.Add(new TrajectoryPoint { X = 4000, Y = 4000, Z = 4000, Index = 5 });
                 trajectoryPoints.Add(new TrajectoryPoint { X = 5000, Y = 5000, Z = 5000, Index = 6 });
 
@@ -131,7 +131,7 @@ namespace IndexOverrideTest
         static async Task Step(double x, double y, double z)
         {
             controller.SetSpeedAll(BASE_SPEED_UM);
-            controller.StartIncAbsAll(x, y, z);
+            controller.StartAbsAll(x, y, z);
             await controller.Wait();
         }
 
@@ -172,7 +172,7 @@ namespace IndexOverrideTest
             var firstPoint = trajectoryPoints[0];
             Console.WriteLine($"[CP] Launching initial move to Point 0 ({firstPoint.X}, {firstPoint.Y}, {firstPoint.Z}).");
             controller.SetSpeedAll(BASE_SPEED_UM);
-            controller.StartIncAbsAll(firstPoint.X, firstPoint.Y, firstPoint.Z);
+            controller.StartAbsAll(firstPoint.X, firstPoint.Y, firstPoint.Z);
 
             /// 2. Loop through each segment in the trajectory
             for (int i = 0; i < trajectoryPoints.Count - 1; i++)
@@ -240,7 +240,7 @@ namespace IndexOverrideTest
                             else
                             {
                                 /// If the axis is idle, we need to start a new move to the next target
-                                controller.StartIncAbs(Microsupport.AXIS.X, nextTarget.X);
+                                controller.StartAbs(Microsupport.AXIS.X, nextTarget.X);
                                 Console.WriteLine($"[CP] X-axis was idle. Started new move to {nextTarget.X} um.");
                             }
                         }
@@ -259,7 +259,7 @@ namespace IndexOverrideTest
                             }
                             else
                             {
-                                controller.StartIncAbs(Microsupport.AXIS.Y, nextTarget.Y);
+                                controller.StartAbs(Microsupport.AXIS.Y, nextTarget.Y);
                                 Console.WriteLine("[CP] Y-axis was idle. Started new move with StartIncAbs.");
                             }
                         }
@@ -278,7 +278,7 @@ namespace IndexOverrideTest
                             }
                             else
                             {
-                                controller.StartIncAbs(Microsupport.AXIS.Z, nextTarget.Z);
+                                controller.StartAbs(Microsupport.AXIS.Z, nextTarget.Z);
                                 Console.WriteLine("[CP] Z-axis was idle. Started new move with StartIncAbs.");
                             }
                         }

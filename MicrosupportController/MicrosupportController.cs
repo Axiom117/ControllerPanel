@@ -117,9 +117,9 @@ namespace MicrosupportController
         private const double SPEED_DEFAULT = 1000;
 
         /// Range of movement for each axis in micrometers (um).
-        private const double RANGE_X = 20000; // X axis movement range (um)
-        private const double RANGE_Y = 20000; // Y axis movement range (um)
-        private const double RANGE_Z = 30000; // Z axis movement range (um)
+        public const double RANGE_X = 20000; // X axis movement range (um)
+        public const double RANGE_Y = 20000; // Y axis movement range (um)
+        public const double RANGE_Z = 30000; // Z axis movement range (um)
 
         private string comment = "";
 
@@ -322,9 +322,9 @@ namespace MicrosupportController
             double centerY = RANGE_Y / 2;
             double centerZ = RANGE_Z / 2;
             /// Move each axis to its center position.
-            StartIncAbs(AXIS.X, centerX);
-            StartIncAbs(AXIS.Y, centerY);
-            StartIncAbs(AXIS.Z, centerZ);
+            StartAbs(AXIS.X, centerX);
+            StartAbs(AXIS.Y, centerY);
+            StartAbs(AXIS.Z, centerZ);
 
             /// Wait for the centering process to complete.
             while (IsBusy())
@@ -475,9 +475,9 @@ namespace MicrosupportController
             if (pos != null)
             {
                 posum = new double[3];
-                posum[0] = Enc2um(AXIS.X, pos[1]);
-                posum[1] = Enc2um(AXIS.Y, pos[0]);
-                posum[2] = Enc2um(AXIS.Z, pos[2]);
+                posum[0] = Enc2um(AXIS.X, pos[1]); // X axis is mapped to Y axis status
+                posum[1] = Enc2um(AXIS.Y, pos[0]); // Y axis is mapped to X axis status
+                posum[2] = Enc2um(AXIS.Z, pos[2]); // Z axis
             }
             return posum;
         }
@@ -514,7 +514,7 @@ namespace MicrosupportController
                 int irange = (speed > 81910) ? 100 : 10;
 
                 /// Sets motion mode.
-                speedData.dwMode = 2; // 2 for S-curve mode
+                speedData.dwMode = 1; // 1 for linear speed mode
                 /// Sets the internal range divisor. Smaller values = finer control.
                 speedData.dwRange = (uint)range;
                 /// dwHighSpeed: max target speed (in PPS)
@@ -522,6 +522,7 @@ namespace MicrosupportController
 
                 /// dwLowSpeed: min target speed (in PPS)
                 uint lowSpeedData = (uint)(speedData.dwHighSpeed * 0.20); // 20% of max speed
+                if (lowSpeedData == 0) lowSpeedData = 1; // Minimum low speed threshold
                 speedData.dwLowSpeed = lowSpeedData;
                 //  speedData.dwLowSpeed = (uint)Math.Abs(1000 / irange);
 
@@ -529,7 +530,7 @@ namespace MicrosupportController
                 if (speedData.dwHighSpeed < speedData.dwLowSpeed)
                     speedData.dwHighSpeed = speedData.dwLowSpeed;
 
-                speedData.dwRate = new uint[] { 50, 8191, 8191 }; // Acceleration rate for each segment of motion (multi-stage ramp-up).
+                speedData.dwRate = new uint[] { 10, 8191, 8191 }; // Acceleration rate for each segment of motion (multi-stage ramp-up).
                 speedData.dwRateChgPnt = new uint[] { 8191, 8191 }; // Points where the rate changes. Use 8191 means a simple trapezoidal drive.
 
                 /// Compute S-curve weighting factor based on speed difference.
@@ -734,19 +735,9 @@ namespace MicrosupportController
         }
 
         /// <summary>
-        /// Starts an incremental absolute move from the center position to the specified target position on the given axis.
-        /// </summary>
-        public uint StartIncAbsFromCenter(AXIS axis, double targetPositionFromCenter)
-        {
-            int targetPosEnc = Um2encAbsFromCenter(axis, targetPositionFromCenter);
-            return StartIncAbsEnc(axis, targetPosEnc);
-        }
-
-
-        /// <summary>
         /// Starts the absolute encoder movement for the specified axis to reach the target position. Note that GetPosition() is used as the reference point.
         /// </summary>
-        public uint StartIncAbsEnc(AXIS axis, int targetPosition)
+        public uint StartAbsEnc(AXIS axis, int targetPosition)
         {
             if (this.IsValid)
             {
@@ -783,29 +774,29 @@ namespace MicrosupportController
         /// <summary>
         /// Starts an absolute movement of the specified axis to the given position in micrometer.
         /// </summary>
-        public uint StartIncAbs(AXIS axis, double targetPosition)
+        public uint StartAbs(AXIS axis, double targetPosition)
         {
             int posEnc = Um2enc(axis, targetPosition);
-            return StartIncAbsEnc(axis, posEnc);
+            return StartAbsEnc(axis, posEnc);
         }
 
         /// <summary>
         /// Moves the X, Y, and Z axes to the specified absolute positions.
         /// </summary>
-        public void StartIncAbsAll(double XTarget, double YTarget, double ZTarget)
+        public void StartAbsAll(double XTarget, double YTarget, double ZTarget)
         {
             if (!this.IsValid) return;
 
-            _ = StartIncAbs(AXIS.X, XTarget);
-            _ = StartIncAbs(AXIS.Y, YTarget);
-            _ = StartIncAbs(AXIS.Z, ZTarget);
+            _ = StartAbs(AXIS.X, XTarget);
+            _ = StartAbs(AXIS.Y, YTarget);
+            _ = StartAbs(AXIS.Z, ZTarget);
         }
 
         /// Relative step movement from the current position of the axes. Origin is the center of the stoke.
-        public async Task StartAbsFromCenterAsync(double x, double y, double z)
+        public async Task StartAbsAllFromCenterAsync(double x, double y, double z)
         {
 
-            StartIncAbsAll(x + RANGE_X/2, y + RANGE_Y/2, -z + RANGE_Z/2);
+            StartAbsAll(x + RANGE_X/2, y + RANGE_Y/2, -z + RANGE_Z/2);
 
             await Wait();
         }
@@ -813,9 +804,35 @@ namespace MicrosupportController
         /// <summary>
         /// Starts a movement to an absolute position from the center, but does not wait for completion.
         /// </summary>
-        public void StartAbsFromCenter(double x, double y, double z)
+        public void StartAbsAllFromCenter(double x, double y, double z)
         {
-            StartIncAbsAll(x + RANGE_X / 2, y + RANGE_Y / 2, -z + RANGE_Z / 2);
+            StartAbsAll(x + RANGE_X / 2, y + RANGE_Y / 2, -z + RANGE_Z / 2);
+        }
+
+        public void StartAbsFromCenter(AXIS axis, double positionFromCenter)
+        {
+            double targetPosition;
+            switch (axis)
+            {
+                case AXIS.X:
+                    targetPosition = positionFromCenter + RANGE_X / 2;
+                    break;
+                case AXIS.Y:
+                    targetPosition = positionFromCenter + RANGE_Y / 2;
+                    break;
+                case AXIS.Z:
+                    targetPosition = -positionFromCenter + RANGE_Z / 2;
+                    break;
+                default:
+                    return;
+            }
+            StartAbs(axis, targetPosition);
+        }
+
+        public async Task StartAbsFromCenterAsync(AXIS axis, double positionFromCenter)
+        {
+            StartAbsFromCenter(axis, positionFromCenter);
+            await Wait();
         }
 
         /// <summary>
@@ -1005,9 +1022,9 @@ namespace MicrosupportController
             switch (axis)
             {
                 case AXIS.Y:
-                    return (status & 0x01) > 0;
+                    return (status & 0x01) > 0; // Y is mapped to X axis status bit
                 case AXIS.X:
-                    return (status & 0x02) > 0;
+                    return (status & 0x02) > 0; // X is mapped to Y axis status bit
                 case AXIS.Z:
                     return (status & 0x04) > 0;
             }

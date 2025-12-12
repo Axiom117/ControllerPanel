@@ -34,8 +34,8 @@ namespace MC104.server
 
         /// Configuration
         private readonly int localServerPort = 5000;
-        private const double BASE_SPEED_UM = 5000;  // 5 mm/s
-        private const double OVERRIDE_DISTANCE_THRESHOLD = 50.0; // um
+        private const double BASE_SPEED_UM = 2500;  // 5 mm/s
+        private const double OVERRIDE_DISTANCE_THRESHOLD = 250.0; // um
 
 
         /// Active client connections
@@ -527,8 +527,8 @@ namespace MC104.server
 
                         /// Use Task.WhenAll to run both movements concurrently
                         await Task.WhenAll(
-                            controller1.StartAbsFromCenterAsync(x1, y1, z1),
-                            controller2.StartAbsFromCenterAsync(x2, y2, z2)
+                            controller1.StartAbsAllFromCenterAsync(x1, y1, z1),
+                            controller2.StartAbsAllFromCenterAsync(x2, y2, z2)
                         );
                     }
                     else
@@ -734,9 +734,8 @@ namespace MC104.server
                 controller1.SetSpeedAll(BASE_SPEED_UM);
                 controller2.SetSpeedAll(BASE_SPEED_UM);
 
-                controller1.StartAbsFromCenter(firstPoint.X1, firstPoint.Y1, firstPoint.Z1);
-                controller2.StartAbsFromCenter(firstPoint.X2, firstPoint.Y2, firstPoint.Z2);
-
+                controller1.StartAbsAllFromCenter(firstPoint.X1, firstPoint.Y1, firstPoint.Z1);
+                controller2.StartAbsAllFromCenter(firstPoint.X2, firstPoint.Y2, firstPoint.Z2);
 
                 /// 2. Loop through each segment in the trajectory
                 for (int i = 0; i < pointsToExecute.Count - 1; i++)
@@ -746,49 +745,32 @@ namespace MC104.server
 
                     NotifyClientConnection($"[CP] Segment {i}->{i + 1} running. Waiting for override window.");
 
-                    /// 3. Monitor position until reaching threshold
-                    bool overrideTriggered1 = false;
-                    bool overrideTriggered2 = false;
-                    while ((!overrideTriggered1 || !overrideTriggered2) && (controller1.IsBusy() || controller2.IsBusy()))
+                    bool overrideTriggered = false;
+                    while (!overrideTriggered && (controller1.IsBusy() || controller2.IsBusy()))
                     {
-                        /// Controller 1
-                        if (!overrideTriggered1 && controller1.IsBusy())
+                        // Get current positions for both controllers
+                        double[] pos1 = controller1.GetPositionsFromCenter();
+                        double[] pos2 = controller2.GetPositionsFromCenter();
+
+                        // Calculate vector distances to the current target for both
+                        double dist1 = Math.Sqrt(Math.Pow(currentTarget.X1 - pos1[0], 2) + Math.Pow(currentTarget.Y1 - pos1[1], 2) + Math.Pow(currentTarget.Z1 - pos1[2], 2));
+                        double dist2 = Math.Sqrt(Math.Pow(currentTarget.X2 - pos2[0], 2) + Math.Pow(currentTarget.Y2 - pos2[1], 2) + Math.Pow(currentTarget.Z2 - pos2[2], 2));
+
+                        // Check if BOTH controllers are within their override threshold
+                        if (dist1 < OVERRIDE_DISTANCE_THRESHOLD && dist2 < OVERRIDE_DISTANCE_THRESHOLD)
                         {
-                            double[] currentPos = await Task.Run(() => controller1.GetPositionsFromCenter());
-                            double dx = currentTarget.X1 - currentPos[0];
-                            double dy = currentTarget.Y1 - currentPos[1];
-                            double dz = currentTarget.Z1 - currentPos[2];
-                            double vectorDistance = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+                            NotifyClientConnection($"[CP] Both controllers in override window. Overriding to Point {i + 1}.");
 
-                            if (vectorDistance < OVERRIDE_DISTANCE_THRESHOLD)
-                            {
-                                NotifyClientConnection($"[CP] {id1} threshold reached. Overriding to Point {i + 1}.");
-                                ApplyIndexOverride(controller1, currentTarget.X1, currentTarget.Y1, currentTarget.Z1, nextTarget.X1, nextTarget.Y1, nextTarget.Z1);
-                                overrideTriggered1 = true;
-                            }
+                            // Apply override to both controllers synchronously
+                            ApplyIndexOverride(controller1, currentTarget.X1, currentTarget.Y1, currentTarget.Z1, nextTarget.X1, nextTarget.Y1, nextTarget.Z1);
+                            ApplyIndexOverride(controller2, currentTarget.X2, currentTarget.Y2, currentTarget.Z2, nextTarget.X2, nextTarget.Y2, nextTarget.Z2);
+
+                            overrideTriggered = true; // Exit the monitoring loop for this segment
                         }
-                        else if (!overrideTriggered1) { overrideTriggered1 = true; } // Mark as done if not busy
 
-                        /// Controller 2
-                        if (!overrideTriggered2 && controller2.IsBusy())
-                        {
-                            double[] currentPos = await Task.Run(() => controller2.GetPositionsFromCenter());
-                            double dx = currentTarget.X2 - currentPos[0];
-                            double dy = currentTarget.Y2 - currentPos[1];
-                            double dz = currentTarget.Z2 - currentPos[2];
-                            double vectorDistance = Math.Sqrt(dx * dx + dy * dy + dz * dz);
-
-                            if (vectorDistance < OVERRIDE_DISTANCE_THRESHOLD)
-                            {
-                                NotifyClientConnection($"[CP] {id2} threshold reached. Overriding to Point {i + 1}.");
-                                ApplyIndexOverride(controller2, currentTarget.X2, currentTarget.Y2, currentTarget.Z2, nextTarget.X2, nextTarget.Y2, nextTarget.Z2);
-                                overrideTriggered2 = true;
-                            }
-                        }
-                        else if (!overrideTriggered2) { overrideTriggered2 = true; } // Mark as done if not busy
-
-                        await Task.Delay(1);
+                        await Task.Delay(1); // Small delay to prevent CPU spinning
                     }
+
 
                     NotifyClientConnection($"[CP] Segment {i}->{i + 1} override complete.");
 
@@ -798,10 +780,10 @@ namespace MC104.server
                         return $"ERROR, 104, Motion stopped unexpectedly during CP path.\n";
                     }
                 }
-
+                double[] finalPos = controller1.GetPositionsFromCenter();
+                NotifyClientConnection($"[CP] Controller {id1} final Pos: X={finalPos[0]:F2}, Y={finalPos[1]:F2}, Z={finalPos[2]:F2}");
                 /// Wait for the final segment to complete
                 await Task.WhenAll(controller1.Wait(), controller2.Wait());
-
                 isPathReady = false; // Path consumed
                 NotifyClientConnection("Path tracking completed");
 
@@ -817,45 +799,87 @@ namespace MC104.server
         private void ApplyIndexOverride(Microsupport controller, double currentX, double currentY, double currentZ, double nextX, double nextY, double nextZ)
         {
             const double MIN_SPEED_UM = 100.0;
+            const double MOTION_TOLERANCE = 1.0;
 
-            /// Speed override logic
+            /// Speed override logic (using absolute coordinates)
             double nextDx = nextX - currentX;
             double nextDy = nextY - currentY;
             double nextDz = nextZ - currentZ;
             double maxDisplacement = Math.Max(Math.Abs(nextDx), Math.Max(Math.Abs(nextDy), Math.Abs(nextDz)));
 
+            /// If displacement is within tolerance, no need to override
+            if (maxDisplacement <= MOTION_TOLERANCE)
+            {
+                return;
+            }
+
             if (maxDisplacement > 1e-6)
             {
-                double speedX = BASE_SPEED_UM * (Math.Abs(nextDx) / maxDisplacement);
-                double speedY = BASE_SPEED_UM * (Math.Abs(nextDy) / maxDisplacement);
-                double speedZ = BASE_SPEED_UM * (Math.Abs(nextDz) / maxDisplacement);
+                double speedX = Math.Abs(nextDx) > MOTION_TOLERANCE ? BASE_SPEED_UM * (Math.Abs(nextDx) / maxDisplacement) : MIN_SPEED_UM;
+                double speedY = Math.Abs(nextDy) > MOTION_TOLERANCE ? BASE_SPEED_UM * (Math.Abs(nextDy) / maxDisplacement) : MIN_SPEED_UM;
+                double speedZ = Math.Abs(nextDz) > MOTION_TOLERANCE ? BASE_SPEED_UM * (Math.Abs(nextDz) / maxDisplacement) : MIN_SPEED_UM;
 
-                if (Math.Abs(nextDx) > 1e-6) controller.SpeedOverride(Microsupport.AXIS.X, (uint)Math.Max(speedX, MIN_SPEED_UM));
-                if (Math.Abs(nextDy) > 1e-6) controller.SpeedOverride(Microsupport.AXIS.Y, (uint)Math.Max(speedY, MIN_SPEED_UM));
-                if (Math.Abs(nextDz) > 1e-6) controller.SpeedOverride(Microsupport.AXIS.Z, (uint)Math.Max(speedZ, MIN_SPEED_UM));
+                if (Math.Abs(nextDx) > MOTION_TOLERANCE) controller.SpeedOverride(Microsupport.AXIS.X, (uint)Math.Max(speedX, MIN_SPEED_UM));
+                if (Math.Abs(nextDy) > MOTION_TOLERANCE) controller.SpeedOverride(Microsupport.AXIS.Y, (uint)Math.Max(speedY, MIN_SPEED_UM));
+                if (Math.Abs(nextDz) > MOTION_TOLERANCE) controller.SpeedOverride(Microsupport.AXIS.Z, (uint)Math.Max(speedZ, MIN_SPEED_UM));
+
+                NotifyClientConnection($"[CP] Speed override applied: X={Math.Max(speedX, MIN_SPEED_UM):F2} um/s, Y={Math.Max(speedY, MIN_SPEED_UM):F2} um/s, Z={Math.Max(speedZ, MIN_SPEED_UM):F2} um/s.");
             }
 
-            /// Index override logic
+            /// Index override logic (using absolute coordinates)
             if (Math.Abs(nextDx) > 1e-6)
             {
-                if (controller.IsBusy(Microsupport.AXIS.X)) controller.IndexOverride(Microsupport.AXIS.X, (uint)controller.Um2encAbsFromCenter(Microsupport.AXIS.X, nextX));
-                else controller.StartIncAbs(Microsupport.AXIS.X, nextX + controller.GetPositionsFromCenter()[0]);
+                if (controller.IsBusy(Microsupport.AXIS.X))
+                {
+                    controller.IndexOverride(Microsupport.AXIS.X, (uint)controller.Um2enc(Microsupport.AXIS.X, nextX));
+                    NotifyClientConnection($"[CP] X Axis busy, applying index override to {nextX:F2} um absolute.");
+                }
+                else
+                {
+                    controller.StartAbsFromCenter(Microsupport.AXIS.X, nextX);
+                    NotifyClientConnection($"[CP] X Axis not busy, starting absolute move to {nextX:F2} um from center.");
+                }
             }
-            else { controller.StopAxis(Microsupport.AXIS.X); }
+            else
+            {
+                controller.StopAxis(Microsupport.AXIS.X);
+            }
 
             if (Math.Abs(nextDy) > 1e-6)
             {
-                if (controller.IsBusy(Microsupport.AXIS.Y)) controller.IndexOverride(Microsupport.AXIS.Y, (uint)controller.Um2encAbsFromCenter(Microsupport.AXIS.Y, nextY));
-                else controller.StartIncAbs(Microsupport.AXIS.Y, nextY + controller.GetPositionsFromCenter()[1]);
+                if (controller.IsBusy(Microsupport.AXIS.Y))
+                {
+                    controller.IndexOverride(Microsupport.AXIS.Y, (uint)controller.Um2enc(Microsupport.AXIS.Y, nextY));
+                    NotifyClientConnection($"[CP] Y Axis busy, applying index override to {nextY:F2} um absolute.");
+                }
+                else
+                {
+                    controller.StartAbsFromCenter(Microsupport.AXIS.Y, nextY);
+                    NotifyClientConnection($"[CP] Y Axis not busy, starting absolute move to {nextY:F2} um from center.");
+                }
             }
-            else { controller.StopAxis(Microsupport.AXIS.Y); }
+            else
+            {
+                controller.StopAxis(Microsupport.AXIS.Y);
+            }
 
             if (Math.Abs(nextDz) > 1e-6)
             {
-                if (controller.IsBusy(Microsupport.AXIS.Z)) controller.IndexOverride(Microsupport.AXIS.Z, (uint)controller.Um2encAbsFromCenter(Microsupport.AXIS.Z, nextZ));
-                else controller.StartIncAbs(Microsupport.AXIS.Z, nextZ + controller.GetPositionsFromCenter()[2]);
+                if (controller.IsBusy(Microsupport.AXIS.Z))
+                {
+                    controller.IndexOverride(Microsupport.AXIS.Z, (uint)controller.Um2enc(Microsupport.AXIS.Z, nextZ));
+                    NotifyClientConnection($"[CP] Z Axis busy, applying index override to {nextZ:F2} um absolute.");
+                }
+                else
+                {
+                    controller.StartAbsFromCenter(Microsupport.AXIS.Z, nextZ);
+                    NotifyClientConnection($"[CP] Z Axis not busy, starting absolute move to {nextZ:F2} um from center.");
+                }
             }
-            else { controller.StopAxis(Microsupport.AXIS.Z); }
+            else
+            {
+                controller.StopAxis(Microsupport.AXIS.Z);
+            }
         }
 
         #endregion
