@@ -1,5 +1,6 @@
 ﻿using MicrosupportController;
 using System;
+using SmoothTrajectoryTest;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
@@ -788,9 +789,9 @@ namespace MC104.server
                 double speedY = Math.Abs(nextDy) > MOTION_TOLERANCE ? BASE_SPEED_UM * (Math.Abs(nextDy) / maxDisplacement) : MIN_SPEED_UM;
                 double speedZ = Math.Abs(nextDz) > MOTION_TOLERANCE ? BASE_SPEED_UM * (Math.Abs(nextDz) / maxDisplacement) : MIN_SPEED_UM;
 
-                if (Math.Abs(nextDx) > MOTION_TOLERANCE) controller.SpeedOverride(Microsupport.AXIS.X, (uint)Math.Max(speedX, MIN_SPEED_UM));
-                if (Math.Abs(nextDy) > MOTION_TOLERANCE) controller.SpeedOverride(Microsupport.AXIS.Y, (uint)Math.Max(speedY, MIN_SPEED_UM));
-                if (Math.Abs(nextDz) > MOTION_TOLERANCE) controller.SpeedOverride(Microsupport.AXIS.Z, (uint)Math.Max(speedZ, MIN_SPEED_UM));
+                if (Math.Abs(nextDx) > MOTION_TOLERANCE) controller.HiSpeedOverride(Microsupport.AXIS.X, (uint)Math.Max(speedX, MIN_SPEED_UM));
+                if (Math.Abs(nextDy) > MOTION_TOLERANCE) controller.HiSpeedOverride(Microsupport.AXIS.Y, (uint)Math.Max(speedY, MIN_SPEED_UM));
+                if (Math.Abs(nextDz) > MOTION_TOLERANCE) controller.HiSpeedOverride(Microsupport.AXIS.Z, (uint)Math.Max(speedZ, MIN_SPEED_UM));
 
                 NotifyClientConnection($"[CP] Speed override applied: X={Math.Max(speedX, MIN_SPEED_UM):F2} um/s, Y={Math.Max(speedY, MIN_SPEED_UM):F2} um/s, Z={Math.Max(speedZ, MIN_SPEED_UM):F2} um/s.");
             }

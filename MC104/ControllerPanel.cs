@@ -796,7 +796,7 @@ namespace MC104
                 return;
             }
 
-            _ = controllerServer.PathTracking(selectedController);
+            _ = controllerServer.PathTrackingCP(selectedController);
         }
         #endregion
     }
