@@ -521,6 +521,17 @@ namespace MC104
             }
         }
 
+        private void OnTrajectoryReceived(string controllerId, int pointCount)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() => OnTrajectoryReceived(controllerId, pointCount)));
+                return;
+            }
+
+            LogMessage($"🎯 Trajectory received for {controllerId}: {pointCount} points");
+        }
+
         /// <summary>
         /// Handles the click event for the Stop Server button, stopping the controller server and updating the user
         /// interface to reflect the server's stopped state.
@@ -551,17 +562,6 @@ namespace MC104
         #endregion
 
         #region Event Handlers
-        private void OnTrajectoryReceived(int pointCount)
-        {
-            if (InvokeRequired)
-            {
-                Invoke(new Action(() => OnTrajectoryReceived(pointCount)));
-                return;
-            }
-
-            LogMessage($"🎯 Trajectory received: {pointCount} points");
-        }
-
         private void LogMessage(string message)
         {
             if (InvokeRequired)
@@ -761,13 +761,19 @@ namespace MC104
                 return;
             }
 
+            if (string.IsNullOrEmpty(selectedController))
+            {
+                MessageBox.Show("Please select a target controller before loading a path.", "No Controller Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             try
             {
                 string fileName = pathDataListBox.SelectedItem.ToString();
                 string dataDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data");
                 string filePath = Path.Combine(dataDirectory, fileName);
 
-                controllerServer.LoadPathDataFromFile(filePath);
+                controllerServer.LoadPathDataFromFile(selectedController, filePath);
             }
             catch (Exception ex)
             {
@@ -784,8 +790,13 @@ namespace MC104
                 return;
             }
 
-            // In mock mode, we can assume MC1 and MC2. For real mode, you might need to select them.
-            _ = controllerServer.PathTracking("MC1", "MC2");
+            if (string.IsNullOrEmpty(selectedController))
+            {
+                MessageBox.Show("Please select a target controller to start path tracking.", "No Controller Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            _ = controllerServer.PathTracking(selectedController);
         }
         #endregion
     }

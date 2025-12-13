@@ -772,8 +772,29 @@ namespace MicrosupportController
             _ = StartIncAbs(AXIS.Z, ZTarget);
         }
 
+        public void StartAbsFromCenter(AXIS axis, double position)
+        {
+            switch (axis)
+            {
+                case AXIS.X:
+                    StartIncAbs(AXIS.X, position + RANGE_X / 2);
+                    break;
+                case AXIS.Y:
+                    StartIncAbs(AXIS.Y, position + RANGE_Y / 2);
+                    break;
+                case AXIS.Z:
+                    StartIncAbs(AXIS.Z, -position + RANGE_Z / 2);
+                    break;
+            }
+        }
+
+        public void StartAbsAllFromCenter(double x, double y, double z)
+        {
+            StartIncAbsAll(x + RANGE_X/2, y + RANGE_Y/2, -z + RANGE_Z/2);
+        }
+
         /// Relative step movement from the current position of the axes. Origin is the center of the stoke.
-        public async Task StartAbsFromCenter(double x, double y, double z)
+        public async Task StartAbsAllFromCenterAsync(double x, double y, double z)
         {
 
             StartIncAbsAll(x + RANGE_X/2, y + RANGE_Y/2, -z + RANGE_Z/2);
