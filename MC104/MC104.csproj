@@ -159,6 +159,8 @@
     <Compile Include="test\BufferTest.cs" />
     <Compile Include="test\IndexOverrideTest.cs" />
     <Compile Include="test\CPTest.cs" />
+    <None Include="Resources\PTP_mode_icon.png" />
+    <None Include="Resources\CP_mode_icon.png" />
     <EmbeddedResource Include="ControllerPanel.resx">
       <DependentUpon>ControllerPanel.cs</DependentUpon>
     </EmbeddedResource>
@@ -173,15 +175,20 @@
       <DesignTime>True</DesignTime>
     </Compile>
     <None Include="app.config" />
+    <Content Include="Assets\CP_mode_icon.png" />
     <Content Include="Assets\microsupport_kit.PNG">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
+    <Content Include="Assets\PTP_mode_icon.png" />
     <Content Include="Configs\controller_mapping.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Content Include="Configs\microsupport_config.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
+    <None Include="data\Trajectory_10_points_MC1.csv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Include="data\Trajectory_20251210_180356.csv">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

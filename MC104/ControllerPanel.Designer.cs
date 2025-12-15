@@ -36,8 +36,6 @@ namespace MC104
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(ControllerPanel));
             this.toolStrip1 = new System.Windows.Forms.ToolStrip();
             this.toolStripLabel1 = new System.Windows.Forms.ToolStripLabel();
-            this.toolStripProgressBar1 = new System.Windows.Forms.ToolStripProgressBar();
-            this.statusLabel = new System.Windows.Forms.ToolStripLabel();
             this.timer1 = new System.Windows.Forms.Timer(this.components);
             this.timer2 = new System.Windows.Forms.Timer(this.components);
             this.Status = new System.Windows.Forms.GroupBox();
@@ -95,16 +93,22 @@ namespace MC104
             this.plusX = new System.Windows.Forms.Button();
             this.minusX = new System.Windows.Forms.Button();
             this.minusY = new System.Windows.Forms.Button();
-            this.pictureBox2 = new System.Windows.Forms.PictureBox();
-            this.microsupportFront = new System.Windows.Forms.PictureBox();
+            this.manipulatorTopView = new System.Windows.Forms.PictureBox();
+            this.manipulatorFrontView = new System.Windows.Forms.PictureBox();
             this.panel1 = new System.Windows.Forms.Panel();
             this.commStatus = new System.Windows.Forms.GroupBox();
-            this.stopServerButton = new System.Windows.Forms.Button();
-            this.saveLogButton = new System.Windows.Forms.Button();
-            this.loadPathDataButton = new System.Windows.Forms.Button();
-            this.startPathTrackingButton = new System.Windows.Forms.Button();
-            this.pathDataListBox = new System.Windows.Forms.ListBox();
+            this.groupBox4 = new System.Windows.Forms.GroupBox();
+            this.pictureBox2 = new System.Windows.Forms.PictureBox();
+            this.pictureBox1 = new System.Windows.Forms.PictureBox();
+            this.cpModeButton = new System.Windows.Forms.RadioButton();
+            this.ptpModeButton = new System.Windows.Forms.RadioButton();
             this.addPathDataButton = new System.Windows.Forms.Button();
+            this.startPathTrackingButton = new System.Windows.Forms.Button();
+            this.removePathDataButton = new System.Windows.Forms.Button();
+            this.loadPathDataButton = new System.Windows.Forms.Button();
+            this.pathDataListBox = new System.Windows.Forms.ListBox();
+            this.saveLogButton = new System.Windows.Forms.Button();
+            this.stopServerButton = new System.Windows.Forms.Button();
             this.toolStrip1.SuspendLayout();
             this.Status.SuspendLayout();
             this.groupBox2.SuspendLayout();
@@ -120,10 +124,13 @@ namespace MC104
             this.groupBox3.SuspendLayout();
             this.speedSetting.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.trackBar1)).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)(this.microsupportFront)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.manipulatorTopView)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.manipulatorFrontView)).BeginInit();
             this.panel1.SuspendLayout();
             this.commStatus.SuspendLayout();
+            this.groupBox4.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
             this.SuspendLayout();
             // 
             // toolStrip1
@@ -131,12 +138,10 @@ namespace MC104
             this.toolStrip1.Dock = System.Windows.Forms.DockStyle.Bottom;
             this.toolStrip1.ImageScalingSize = new System.Drawing.Size(24, 24);
             this.toolStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            this.toolStripLabel1,
-            this.toolStripProgressBar1,
-            this.statusLabel});
+            this.toolStripLabel1});
             this.toolStrip1.Location = new System.Drawing.Point(0, 528);
             this.toolStrip1.Name = "toolStrip1";
-            this.toolStrip1.Size = new System.Drawing.Size(1382, 25);
+            this.toolStrip1.Size = new System.Drawing.Size(1482, 25);
             this.toolStrip1.TabIndex = 1;
             this.toolStrip1.Text = "toolStrip1";
             // 
@@ -144,17 +149,6 @@ namespace MC104
             // 
             this.toolStripLabel1.Name = "toolStripLabel1";
             this.toolStripLabel1.Size = new System.Drawing.Size(0, 22);
-            // 
-            // toolStripProgressBar1
-            // 
-            this.toolStripProgressBar1.Name = "toolStripProgressBar1";
-            this.toolStripProgressBar1.Size = new System.Drawing.Size(100, 22);
-            // 
-            // statusLabel
-            // 
-            this.statusLabel.Name = "statusLabel";
-            this.statusLabel.Size = new System.Drawing.Size(122, 22);
-            this.statusLabel.Text = "toolStripLabel2";
             // 
             // Status
             // 
@@ -486,28 +480,30 @@ namespace MC104
             this.clearLogButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.clearLogButton.Location = new System.Drawing.Point(16, 474);
             this.clearLogButton.Name = "clearLogButton";
-            this.clearLogButton.Size = new System.Drawing.Size(117, 39);
+            this.clearLogButton.Size = new System.Drawing.Size(137, 39);
             this.clearLogButton.TabIndex = 81;
             this.clearLogButton.Text = "Clear Log";
             this.clearLogButton.UseVisualStyleBackColor = true;
+            this.clearLogButton.Click += new System.EventHandler(this.clearLogButton_Click);
             // 
             // logTextBox
             // 
             this.logTextBox.BackColor = System.Drawing.SystemColors.ActiveCaptionText;
+            this.logTextBox.Font = new System.Drawing.Font("Consolas", 10.8F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.logTextBox.ForeColor = System.Drawing.Color.LightGreen;
-            this.logTextBox.Location = new System.Drawing.Point(16, 42);
+            this.logTextBox.Location = new System.Drawing.Point(16, 82);
             this.logTextBox.Multiline = true;
             this.logTextBox.Name = "logTextBox";
             this.logTextBox.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
-            this.logTextBox.Size = new System.Drawing.Size(251, 422);
+            this.logTextBox.Size = new System.Drawing.Size(289, 386);
             this.logTextBox.TabIndex = 79;
             // 
             // startServerButton
             // 
             this.startServerButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.startServerButton.Location = new System.Drawing.Point(290, 51);
+            this.startServerButton.Location = new System.Drawing.Point(16, 37);
             this.startServerButton.Name = "startServerButton";
-            this.startServerButton.Size = new System.Drawing.Size(164, 39);
+            this.startServerButton.Size = new System.Drawing.Size(137, 39);
             this.startServerButton.TabIndex = 78;
             this.startServerButton.Text = "Start Server";
             this.startServerButton.UseVisualStyleBackColor = true;
@@ -604,8 +600,8 @@ namespace MC104
             this.controlPanel.Controls.Add(this.plusX);
             this.controlPanel.Controls.Add(this.minusX);
             this.controlPanel.Controls.Add(this.minusY);
-            this.controlPanel.Controls.Add(this.pictureBox2);
-            this.controlPanel.Controls.Add(this.microsupportFront);
+            this.controlPanel.Controls.Add(this.manipulatorTopView);
+            this.controlPanel.Controls.Add(this.manipulatorFrontView);
             this.controlPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.controlPanel.Font = new System.Drawing.Font("Microsoft Sans Serif", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.controlPanel.Location = new System.Drawing.Point(0, 0);
@@ -854,29 +850,29 @@ namespace MC104
             this.minusY.MouseDown += new System.Windows.Forms.MouseEventHandler(this.buttons_MouseDown);
             this.minusY.MouseUp += new System.Windows.Forms.MouseEventHandler(this.buttons_MouseUp);
             // 
-            // pictureBox2
+            // manipulatorTopView
             // 
-            this.pictureBox2.BackColor = System.Drawing.SystemColors.Window;
-            this.pictureBox2.Image = ((System.Drawing.Image)(resources.GetObject("pictureBox2.Image")));
-            this.pictureBox2.Location = new System.Drawing.Point(71, 99);
-            this.pictureBox2.Margin = new System.Windows.Forms.Padding(2);
-            this.pictureBox2.Name = "pictureBox2";
-            this.pictureBox2.Size = new System.Drawing.Size(149, 212);
-            this.pictureBox2.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
-            this.pictureBox2.TabIndex = 57;
-            this.pictureBox2.TabStop = false;
+            this.manipulatorTopView.BackColor = System.Drawing.SystemColors.Window;
+            this.manipulatorTopView.Image = ((System.Drawing.Image)(resources.GetObject("manipulatorTopView.Image")));
+            this.manipulatorTopView.Location = new System.Drawing.Point(71, 99);
+            this.manipulatorTopView.Margin = new System.Windows.Forms.Padding(2);
+            this.manipulatorTopView.Name = "manipulatorTopView";
+            this.manipulatorTopView.Size = new System.Drawing.Size(149, 212);
+            this.manipulatorTopView.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
+            this.manipulatorTopView.TabIndex = 57;
+            this.manipulatorTopView.TabStop = false;
             // 
-            // microsupportFront
+            // manipulatorFrontView
             // 
-            this.microsupportFront.BackColor = System.Drawing.SystemColors.Window;
-            this.microsupportFront.Image = ((System.Drawing.Image)(resources.GetObject("microsupportFront.Image")));
-            this.microsupportFront.Location = new System.Drawing.Point(291, 99);
-            this.microsupportFront.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
-            this.microsupportFront.Name = "microsupportFront";
-            this.microsupportFront.Size = new System.Drawing.Size(179, 212);
-            this.microsupportFront.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
-            this.microsupportFront.TabIndex = 56;
-            this.microsupportFront.TabStop = false;
+            this.manipulatorFrontView.BackColor = System.Drawing.SystemColors.Window;
+            this.manipulatorFrontView.Image = ((System.Drawing.Image)(resources.GetObject("manipulatorFrontView.Image")));
+            this.manipulatorFrontView.Location = new System.Drawing.Point(291, 99);
+            this.manipulatorFrontView.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
+            this.manipulatorFrontView.Name = "manipulatorFrontView";
+            this.manipulatorFrontView.Size = new System.Drawing.Size(179, 212);
+            this.manipulatorFrontView.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
+            this.manipulatorFrontView.TabIndex = 56;
+            this.manipulatorFrontView.TabStop = false;
             // 
             // panel1
             // 
@@ -884,15 +880,12 @@ namespace MC104
             this.panel1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.panel1.Location = new System.Drawing.Point(916, 0);
             this.panel1.Name = "panel1";
-            this.panel1.Size = new System.Drawing.Size(466, 528);
+            this.panel1.Size = new System.Drawing.Size(566, 528);
             this.panel1.TabIndex = 61;
             // 
             // commStatus
             // 
-            this.commStatus.Controls.Add(this.addPathDataButton);
-            this.commStatus.Controls.Add(this.pathDataListBox);
-            this.commStatus.Controls.Add(this.startPathTrackingButton);
-            this.commStatus.Controls.Add(this.loadPathDataButton);
+            this.commStatus.Controls.Add(this.groupBox4);
             this.commStatus.Controls.Add(this.saveLogButton);
             this.commStatus.Controls.Add(this.stopServerButton);
             this.commStatus.Controls.Add(this.clearLogButton);
@@ -902,74 +895,151 @@ namespace MC104
             this.commStatus.Font = new System.Drawing.Font("Microsoft Sans Serif", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.commStatus.Location = new System.Drawing.Point(0, 0);
             this.commStatus.Name = "commStatus";
-            this.commStatus.Size = new System.Drawing.Size(466, 528);
+            this.commStatus.Size = new System.Drawing.Size(566, 528);
             this.commStatus.TabIndex = 82;
             this.commStatus.TabStop = false;
             this.commStatus.Text = "Comm Status";
             // 
-            // stopServerButton
+            // groupBox4
             // 
-            this.stopServerButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.stopServerButton.Location = new System.Drawing.Point(290, 110);
-            this.stopServerButton.Name = "stopServerButton";
-            this.stopServerButton.Size = new System.Drawing.Size(164, 39);
-            this.stopServerButton.TabIndex = 82;
-            this.stopServerButton.Text = "Stop Server";
-            this.stopServerButton.UseVisualStyleBackColor = true;
-            this.stopServerButton.Click += new System.EventHandler(this.StopServerButton_Click);
+            this.groupBox4.Controls.Add(this.pictureBox2);
+            this.groupBox4.Controls.Add(this.pictureBox1);
+            this.groupBox4.Controls.Add(this.cpModeButton);
+            this.groupBox4.Controls.Add(this.ptpModeButton);
+            this.groupBox4.Controls.Add(this.addPathDataButton);
+            this.groupBox4.Controls.Add(this.startPathTrackingButton);
+            this.groupBox4.Controls.Add(this.removePathDataButton);
+            this.groupBox4.Controls.Add(this.loadPathDataButton);
+            this.groupBox4.Controls.Add(this.pathDataListBox);
+            this.groupBox4.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.groupBox4.Location = new System.Drawing.Point(312, 37);
+            this.groupBox4.Name = "groupBox4";
+            this.groupBox4.Size = new System.Drawing.Size(248, 476);
+            this.groupBox4.TabIndex = 90;
+            this.groupBox4.TabStop = false;
+            this.groupBox4.Text = "Path Data List";
             // 
-            // saveLogButton
+            // pictureBox2
             // 
-            this.saveLogButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.saveLogButton.Location = new System.Drawing.Point(150, 474);
-            this.saveLogButton.Name = "saveLogButton";
-            this.saveLogButton.Size = new System.Drawing.Size(117, 39);
-            this.saveLogButton.TabIndex = 83;
-            this.saveLogButton.Text = "Save Log";
-            this.saveLogButton.UseVisualStyleBackColor = true;
+            this.pictureBox2.Image = ((System.Drawing.Image)(resources.GetObject("pictureBox2.Image")));
+            this.pictureBox2.Location = new System.Drawing.Point(10, 291);
+            this.pictureBox2.Name = "pictureBox2";
+            this.pictureBox2.Size = new System.Drawing.Size(90, 45);
+            this.pictureBox2.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
+            this.pictureBox2.TabIndex = 93;
+            this.pictureBox2.TabStop = false;
             // 
-            // loadPathDataButton
+            // pictureBox1
             // 
-            this.loadPathDataButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.loadPathDataButton.Location = new System.Drawing.Point(290, 412);
-            this.loadPathDataButton.Name = "loadPathDataButton";
-            this.loadPathDataButton.Size = new System.Drawing.Size(164, 39);
-            this.loadPathDataButton.TabIndex = 85;
-            this.loadPathDataButton.Text = "Load Path Data";
-            this.loadPathDataButton.UseVisualStyleBackColor = true;
-            this.loadPathDataButton.Click += new System.EventHandler(this.loadPathDataButton_Click);
+            this.pictureBox1.ErrorImage = null;
+            this.pictureBox1.Image = ((System.Drawing.Image)(resources.GetObject("pictureBox1.Image")));
+            this.pictureBox1.InitialImage = ((System.Drawing.Image)(resources.GetObject("pictureBox1.InitialImage")));
+            this.pictureBox1.Location = new System.Drawing.Point(16, 345);
+            this.pictureBox1.Name = "pictureBox1";
+            this.pictureBox1.Size = new System.Drawing.Size(80, 80);
+            this.pictureBox1.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
+            this.pictureBox1.TabIndex = 92;
+            this.pictureBox1.TabStop = false;
+            // 
+            // cpModeButton
+            // 
+            this.cpModeButton.Appearance = System.Windows.Forms.Appearance.Button;
+            this.cpModeButton.Location = new System.Drawing.Point(108, 366);
+            this.cpModeButton.Name = "cpModeButton";
+            this.cpModeButton.Size = new System.Drawing.Size(130, 40);
+            this.cpModeButton.TabIndex = 91;
+            this.cpModeButton.Text = "CP Mode";
+            this.cpModeButton.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.cpModeButton.UseVisualStyleBackColor = true;
+            // 
+            // ptpModeButton
+            // 
+            this.ptpModeButton.Appearance = System.Windows.Forms.Appearance.Button;
+            this.ptpModeButton.Checked = true;
+            this.ptpModeButton.Location = new System.Drawing.Point(108, 292);
+            this.ptpModeButton.Name = "ptpModeButton";
+            this.ptpModeButton.Size = new System.Drawing.Size(130, 40);
+            this.ptpModeButton.TabIndex = 90;
+            this.ptpModeButton.TabStop = true;
+            this.ptpModeButton.Text = "PTP Mode";
+            this.ptpModeButton.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.ptpModeButton.UseVisualStyleBackColor = true;
+            // 
+            // addPathDataButton
+            // 
+            this.addPathDataButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.addPathDataButton.Location = new System.Drawing.Point(10, 198);
+            this.addPathDataButton.Name = "addPathDataButton";
+            this.addPathDataButton.Size = new System.Drawing.Size(115, 39);
+            this.addPathDataButton.TabIndex = 88;
+            this.addPathDataButton.Text = "Add";
+            this.addPathDataButton.UseVisualStyleBackColor = true;
+            this.addPathDataButton.Click += new System.EventHandler(this.addPathDataButton_Click);
             // 
             // startPathTrackingButton
             // 
             this.startPathTrackingButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.startPathTrackingButton.Location = new System.Drawing.Point(290, 474);
+            this.startPathTrackingButton.Location = new System.Drawing.Point(10, 431);
             this.startPathTrackingButton.Name = "startPathTrackingButton";
-            this.startPathTrackingButton.Size = new System.Drawing.Size(164, 39);
+            this.startPathTrackingButton.Size = new System.Drawing.Size(228, 39);
             this.startPathTrackingButton.TabIndex = 86;
             this.startPathTrackingButton.Text = "Start Path Tracking";
             this.startPathTrackingButton.UseVisualStyleBackColor = true;
             this.startPathTrackingButton.Click += new System.EventHandler(this.startPathTrackingButton_Click);
+            // 
+            // removePathDataButton
+            // 
+            this.removePathDataButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.removePathDataButton.Location = new System.Drawing.Point(131, 198);
+            this.removePathDataButton.Name = "removePathDataButton";
+            this.removePathDataButton.Size = new System.Drawing.Size(107, 39);
+            this.removePathDataButton.TabIndex = 89;
+            this.removePathDataButton.Text = "Remove";
+            this.removePathDataButton.UseVisualStyleBackColor = true;
+            this.removePathDataButton.Click += new System.EventHandler(this.removePathDataButton_Click);
+            // 
+            // loadPathDataButton
+            // 
+            this.loadPathDataButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.loadPathDataButton.Location = new System.Drawing.Point(10, 243);
+            this.loadPathDataButton.Name = "loadPathDataButton";
+            this.loadPathDataButton.Size = new System.Drawing.Size(228, 39);
+            this.loadPathDataButton.TabIndex = 85;
+            this.loadPathDataButton.Text = "Load Path Data";
+            this.loadPathDataButton.UseVisualStyleBackColor = true;
+            this.loadPathDataButton.Click += new System.EventHandler(this.loadPathDataButton_Click);
             // 
             // pathDataListBox
             // 
             this.pathDataListBox.Font = new System.Drawing.Font("Consolas", 10.8F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.pathDataListBox.FormattingEnabled = true;
             this.pathDataListBox.ItemHeight = 22;
-            this.pathDataListBox.Location = new System.Drawing.Point(290, 169);
+            this.pathDataListBox.Location = new System.Drawing.Point(10, 29);
             this.pathDataListBox.Name = "pathDataListBox";
-            this.pathDataListBox.Size = new System.Drawing.Size(164, 180);
+            this.pathDataListBox.Size = new System.Drawing.Size(228, 158);
             this.pathDataListBox.TabIndex = 87;
             // 
-            // addPathDataButton
+            // saveLogButton
             // 
-            this.addPathDataButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.addPathDataButton.Location = new System.Drawing.Point(290, 359);
-            this.addPathDataButton.Name = "addPathDataButton";
-            this.addPathDataButton.Size = new System.Drawing.Size(164, 39);
-            this.addPathDataButton.TabIndex = 88;
-            this.addPathDataButton.Text = "Add Path Data";
-            this.addPathDataButton.UseVisualStyleBackColor = true;
-            this.addPathDataButton.Click += new System.EventHandler(this.addPathDataButton_Click);
+            this.saveLogButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.saveLogButton.Location = new System.Drawing.Point(159, 474);
+            this.saveLogButton.Name = "saveLogButton";
+            this.saveLogButton.Size = new System.Drawing.Size(146, 39);
+            this.saveLogButton.TabIndex = 83;
+            this.saveLogButton.Text = "Save Log";
+            this.saveLogButton.UseVisualStyleBackColor = true;
+            this.saveLogButton.Click += new System.EventHandler(this.saveLogButton_Click);
+            // 
+            // stopServerButton
+            // 
+            this.stopServerButton.Font = new System.Drawing.Font("Microsoft Sans Serif", 10.5F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.stopServerButton.Location = new System.Drawing.Point(159, 37);
+            this.stopServerButton.Name = "stopServerButton";
+            this.stopServerButton.Size = new System.Drawing.Size(146, 39);
+            this.stopServerButton.TabIndex = 82;
+            this.stopServerButton.Text = "Stop Server";
+            this.stopServerButton.UseVisualStyleBackColor = true;
+            this.stopServerButton.Click += new System.EventHandler(this.StopServerButton_Click);
             // 
             // ControllerPanel
             // 
@@ -977,7 +1047,7 @@ namespace MC104
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.AutoSize = true;
             this.BackColor = System.Drawing.SystemColors.Window;
-            this.ClientSize = new System.Drawing.Size(1382, 553);
+            this.ClientSize = new System.Drawing.Size(1482, 553);
             this.Controls.Add(this.panel1);
             this.Controls.Add(this.panel_right);
             this.Controls.Add(this.panel_left);
@@ -985,9 +1055,9 @@ namespace MC104
             this.Font = new System.Drawing.Font("Arial", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
-            this.MaximumSize = new System.Drawing.Size(1400, 600);
+            this.MaximumSize = new System.Drawing.Size(1500, 600);
             this.Name = "ControllerPanel";
-            this.Text = "  ";
+            this.Text = "  Microsupport Quick Pro Controller Panel (Developed in Arai Biorobotics Lab)";
             this.Load += new System.EventHandler(this.Form2_Load);
             this.toolStrip1.ResumeLayout(false);
             this.toolStrip1.PerformLayout();
@@ -1010,11 +1080,14 @@ namespace MC104
             this.speedSetting.ResumeLayout(false);
             this.speedSetting.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.trackBar1)).EndInit();
-            ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).EndInit();
-            ((System.ComponentModel.ISupportInitialize)(this.microsupportFront)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.manipulatorTopView)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.manipulatorFrontView)).EndInit();
             this.panel1.ResumeLayout(false);
             this.commStatus.ResumeLayout(false);
             this.commStatus.PerformLayout();
+            this.groupBox4.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -1032,9 +1105,9 @@ namespace MC104
         private System.Windows.Forms.Button plusX;
         private System.Windows.Forms.Button plusZ;
         private System.Windows.Forms.Button minusX;
-        private System.Windows.Forms.PictureBox pictureBox2;
+        private System.Windows.Forms.PictureBox manipulatorTopView;
         private System.Windows.Forms.Button minusZ;
-        private System.Windows.Forms.PictureBox microsupportFront;
+        private System.Windows.Forms.PictureBox manipulatorFrontView;
         private System.Windows.Forms.RadioButton radioButton2;
         private System.Windows.Forms.RadioButton radioButton1;
         private System.Windows.Forms.TrackBar trackBar1;
@@ -1072,7 +1145,6 @@ namespace MC104
         private Button startServerButton;
         private TextBox logTextBox;
         private Button clearLogButton;
-        private ToolStripProgressBar toolStripProgressBar1;
         private Button btnEmgStop;
         private Panel panel1;
         private GroupBox Devices;
@@ -1093,7 +1165,6 @@ namespace MC104
         private PictureBox controller2;
         private PictureBox controller1;
         private GroupBox commStatus;
-        private ToolStripLabel statusLabel;
         private GroupBox speedSetting;
         private GroupBox groupBox3;
         private Label label18;
@@ -1107,5 +1178,11 @@ namespace MC104
         private Button loadPathDataButton;
         private ListBox pathDataListBox;
         private Button addPathDataButton;
+        private Button removePathDataButton;
+        private GroupBox groupBox4;
+        private RadioButton cpModeButton;
+        private RadioButton ptpModeButton;
+        private PictureBox pictureBox1;
+        private PictureBox pictureBox2;
     }
 }

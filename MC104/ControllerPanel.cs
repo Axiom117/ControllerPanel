@@ -44,7 +44,7 @@ namespace MC104
 
         /// List of PictureBox objects to represent the controller icons in the UI.
         private List<PictureBox> controllerIcons = new List<PictureBox>();
-        private string selectedController = "";
+        private List<string> selectedControllers = new List<string>();
 
         /// The controllerServer object to manage the controller server operations.
         private ControllerServer controllerServer;
@@ -153,7 +153,7 @@ namespace MC104
                         box.Image = Image.FromFile(imagePath);
                     }
                     // Set the background color based on selection
-                    box.BackColor = (selectedController == controllerId) ? Color.LightBlue : Color.LightGray;
+                    box.BackColor = selectedControllers.Contains(controllerId) ? Color.LightBlue : Color.LightGray;
                     // Bind the click event handler to the PictureBox
                     box.Click -= controllerIconClick; // Unsubscribe to avoid multiple event handlers
                     box.Click += controllerIconClick;
@@ -227,27 +227,30 @@ namespace MC104
             }
 
             /// If there are valid controllers, update the UI with their current positions and speed.
-            if (Microsupport.controllers.Count > 0 && selectedController != "")
+            if (selectedControllers.Count > 0)
             {
-                /// Display the current positions of the selected controller.
-                var deviceId = selectedController;
-                var controller = Microsupport.controllers[deviceId];
-
-                if (controller != null && controller.IsValid)
+                /// Display the current positions of the first selected controller.
+                var deviceId = selectedControllers[0];
+                if (Microsupport.controllers.ContainsKey(deviceId))
                 {
-                    /// Get the current position and update the UI.
-                    double[] pos = controller.GetPositions();
-                    double currentX = pos[0];
-                    double currentY = pos[1];
-                    double currentZ = pos[2];
+                    var controller = Microsupport.controllers[deviceId];
 
-                    posX.Text = currentX.ToString("0.0");
-                    posY.Text = currentY.ToString("0.0");
-                    posZ.Text = currentZ.ToString("0.0");
+                    if (controller != null && controller.IsValid)
+                    {
+                        /// Get the current position and update the UI.
+                        double[] pos = controller.GetPositions();
+                        double currentX = pos[0];
+                        double currentY = pos[1];
+                        double currentZ = pos[2];
 
-                    posXC.Text = (currentX - RANGE_X / 2).ToString("0.0");
-                    posYC.Text = (currentY - RANGE_Y / 2).ToString("0.0");
-                    posZC.Text = (-currentZ + RANGE_Z / 2).ToString("0.0");
+                        posX.Text = currentX.ToString("0.0");
+                        posY.Text = currentY.ToString("0.0");
+                        posZ.Text = currentZ.ToString("0.0");
+
+                        posXC.Text = (currentX - RANGE_X / 2).ToString("0.0");
+                        posYC.Text = (currentY - RANGE_Y / 2).ToString("0.0");
+                        posZC.Text = (-currentZ + RANGE_Z / 2).ToString("0.0");
+                    }
                 }
             }
         }
@@ -277,24 +280,15 @@ namespace MC104
                 string controllerId = (string)clickedIcon.Tag;
 
                 /// Toggle the selection state of the clicked icon
-                if (selectedController == controllerId)
+                if (selectedControllers.Contains(controllerId))
                 {
+                    selectedControllers.Remove(controllerId);
                     clickedIcon.BackColor = Color.LightGray;
-                    selectedController = "";
                 }
                 else
                 {
-                    // Deselect all icons first
-                    foreach (Control control in Devices.Controls)
-                    {
-                        if (control is PictureBox)
-                        {
-                            control.BackColor = Color.LightGray;
-                        }
-                    }
-                    // Select the clicked icon
+                    selectedControllers.Add(controllerId);
                     clickedIcon.BackColor = Color.LightBlue;
-                    selectedController = controllerId;
                 }
             }
         }
@@ -355,7 +349,7 @@ namespace MC104
         /// </summary>
         private async void buttons_MouseDown(object sender, MouseEventArgs e)
         {
-            if (string.IsNullOrEmpty(selectedController))
+            if (selectedControllers.Count == 0)
             {
                 MessageBox.Show("Error: Please select a target controller before executing an action.", "No Controller Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
@@ -370,19 +364,29 @@ namespace MC104
             /// Obtain the speed value from the trackBar.
             int speedJog = GetSpeed();
 
-            /// Set the speed for the specified axis.
-            Microsupport.controllers[selectedController].SetSpeed(axis, speedJog);
+            List<Task> tasks = new List<Task>();
 
-            // If jog mode is selected, start the jog operation.
-            if (radioButton1.Checked)
+            foreach (var controllerId in selectedControllers)
             {
-                await Task.Run(() => Microsupport.controllers[selectedController].StartJog(axis, direction));
+                if (Microsupport.controllers.ContainsKey(controllerId))
+                {
+                    var controller = Microsupport.controllers[controllerId];
+                    /// Set the speed for the specified axis.
+                    controller.SetSpeed(axis, speedJog);
+
+                    // If jog mode is selected, start the jog operation.
+                    if (radioButton1.Checked)
+                    {
+                        tasks.Add(Task.Run(() => controller.StartJog(axis, direction)));
+                    }
+                    // If step mode is selected, perform a relative move operation.
+                    else if (radioButton2.Checked)
+                    {
+                        tasks.Add(Task.Run(() => controller.StartInc(axis, direction, double.Parse(stepDistance.Text))));
+                    }
+                }
             }
-            // If step mode is selected, perform a relative move operation.
-            else if (radioButton2.Checked)
-            {
-                await Task.Run(() => Microsupport.controllers[selectedController].StartInc(axis, direction, double.Parse(stepDistance.Text)));
-            }
+            await Task.WhenAll(tasks);
         }
 
         /// <summary>
@@ -390,7 +394,7 @@ namespace MC104
         /// </summary>
         private void buttons_MouseUp(object sender, MouseEventArgs e)
         {
-            if (string.IsNullOrEmpty(selectedController))
+            if (selectedControllers.Count == 0)
             {
                 /// Silently return as the error message would have been shown on MouseDown.
                 return;
@@ -402,14 +406,20 @@ namespace MC104
                 Microsupport.DIRECTION dir = 0;
                 GetAxisDirection(sender, ref axis, ref dir);
 
-                /// Stop the jog operation for the specified axis.
-                Microsupport.controllers[selectedController].StopAxis(axis);
+                foreach (var controllerId in selectedControllers)
+                {
+                    if (Microsupport.controllers.ContainsKey(controllerId))
+                    {
+                        /// Stop the jog operation for the specified axis.
+                        Microsupport.controllers[controllerId].StopAxis(axis);
+                    }
+                }
             }
         }
 
         private void trackBar1_Scroll(object sender, EventArgs e)
         {
-            if (string.IsNullOrEmpty(selectedController))
+            if (selectedControllers.Count == 0)
             {
                 MessageBox.Show("Error: Please select a target controller before executing an action.", "No Controller Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 /// Reset trackbar to a default/safe value if needed
@@ -422,7 +432,13 @@ namespace MC104
             if (speed < 50)
                 speed = 50;
 
-            Microsupport.controllers[selectedController].SetSpeedAll(speed);
+            foreach (var controllerId in selectedControllers)
+            {
+                if (Microsupport.controllers.ContainsKey(controllerId))
+                {
+                    Microsupport.controllers[controllerId].SetSpeedAll(speed);
+                }
+            }
 
             labelSpeed.Text = speed.ToString("0") + " (μm/s)";
         }
@@ -437,15 +453,21 @@ namespace MC104
         /// <param name="e">An <see cref="EventArgs"/> instance containing the event data.</param>
         private async void button_origin_Click(object sender, EventArgs e)
         {
-            if (string.IsNullOrEmpty(selectedController))
+            if (selectedControllers.Count == 0)
             {
                 MessageBox.Show("Error: Please select a target controller before executing an action.", "No Controller Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            Task MCSO = Microsupport.controllers[selectedController].StartOriginAsync();
-
-            await MCSO;
+            List<Task> tasks = new List<Task>();
+            foreach (var controllerId in selectedControllers)
+            {
+                if (Microsupport.controllers.ContainsKey(controllerId))
+                {
+                    tasks.Add(Microsupport.controllers[controllerId].StartOriginAsync());
+                }
+            }
+            await Task.WhenAll(tasks);
         }
 
         /// <summary>
@@ -457,36 +479,41 @@ namespace MC104
         /// <param name="e">An <see cref="EventArgs"/> instance containing the event data.</param>
         private void button_emgstop_Click(object sender, EventArgs e)
         {
-            if (string.IsNullOrEmpty(selectedController))
+            if (selectedControllers.Count == 0)
             {
                 MessageBox.Show("Error: Please select a target controller before executing an action.", "No Controller Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            while (true)
+            // This is an infinite loop, which is probably not what you want.
+            // It will block the UI thread.
+            // I will assume you want to call it once for each selected controller.
+            foreach (var controllerId in selectedControllers)
             {
-                Microsupport.controllers[selectedController].StopEmergency();
+                if (Microsupport.controllers.ContainsKey(controllerId))
+                {
+                    Microsupport.controllers[controllerId].StopEmergency();
+                }
             }
         }
 
         private async void button_center_Click(object sender, EventArgs e)
         {
-            if (string.IsNullOrEmpty(selectedController))
+            if (selectedControllers.Count == 0)
             {
                 MessageBox.Show("Error: Please select a target controller before executing an action.", "No Controller Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            if (Microsupport.controllers.ContainsKey(selectedController))
+            List<Task> tasks = new List<Task>();
+            foreach (var controllerId in selectedControllers)
             {
-                Task MCCO = Microsupport.controllers[selectedController].StartCenter();
-
-                await MCCO;
+                if (Microsupport.controllers.ContainsKey(controllerId))
+                {
+                    tasks.Add(Microsupport.controllers[controllerId].StartCenter());
+                }
             }
-            else
-            {
-                MessageBox.Show("No controller selected or connected.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            await Task.WhenAll(tasks);
         }
 
         #endregion
@@ -521,6 +548,17 @@ namespace MC104
             }
         }
 
+        private void OnTrajectoryReceived(string controllerId, int pointCount)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() => OnTrajectoryReceived(controllerId, pointCount)));
+                return;
+            }
+
+            LogMessage($"🎯 Trajectory received for {controllerId}: {pointCount} points");
+        }
+
         /// <summary>
         /// Handles the click event for the Stop Server button, stopping the controller server and updating the user
         /// interface to reflect the server's stopped state.
@@ -551,17 +589,6 @@ namespace MC104
         #endregion
 
         #region Event Handlers
-        private void OnTrajectoryReceived(int pointCount)
-        {
-            if (InvokeRequired)
-            {
-                Invoke(new Action(() => OnTrajectoryReceived(pointCount)));
-                return;
-            }
-
-            LogMessage($"🎯 Trajectory received: {pointCount} points");
-        }
-
         private void LogMessage(string message)
         {
             if (InvokeRequired)
@@ -578,7 +605,7 @@ namespace MC104
                 return;
             }
 
-            // Add timestamp if not already present
+            /// Add timestamp if not already present
             if (!message.StartsWith("[") || !message.Contains("]"))
             {
                 message = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
@@ -588,7 +615,7 @@ namespace MC104
             logTextBox.SelectionStart = logTextBox.Text.Length;
             logTextBox.ScrollToCaret();
 
-            // Update status based on message content
+            /// Update status based on message content
             if (message.Contains("Connected") || message.Contains("connected"))
             {
                 UpdateStatus("Connected", Color.Green);
@@ -602,12 +629,43 @@ namespace MC104
                 UpdateStatus("Path execution completed", Color.Green);
             }
 
-            // Limit log size
+            /// Limit log size
             if (logTextBox.Lines.Length > 1000)
             {
                 var lines = logTextBox.Lines;
                 var newLines = lines.Skip(lines.Length - 800).ToArray();
                 logTextBox.Lines = newLines;
+            }
+        }
+
+        private void clearLogButton_Click(object sender, EventArgs e)
+        {
+            logTextBox.Clear();
+            LogMessage("Log cleared.");
+        }
+
+        private void saveLogButton_Click(object sender, EventArgs e)
+        {
+            using (SaveFileDialog saveFileDialog = new SaveFileDialog())
+            {
+                saveFileDialog.Filter = "Log Files (*.log)|*.log|Text Files (*.txt)|*.txt|All files (*.*)|*.*";
+                saveFileDialog.Title = "Save Log File";
+                saveFileDialog.DefaultExt = "log";
+                saveFileDialog.FileName = $"controller_log_{DateTime.Now:yyyyMMdd_HHmmss}";
+
+                if (saveFileDialog.ShowDialog() == DialogResult.OK)
+                {
+                    try
+                    {
+                        File.WriteAllText(saveFileDialog.FileName, logTextBox.Text);
+                        LogMessage($"Log successfully saved to '{saveFileDialog.FileName}'");
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Error saving log file: {ex.Message}", "File Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        LogMessage($"ERROR: Failed to save log file. {ex.Message}");
+                    }
+                }
             }
         }
 
@@ -618,8 +676,6 @@ namespace MC104
                 Invoke(new Action(() => UpdateStatus(message, color)));
                 return;
             }
-
-            statusLabel.Text = message;
         }
 
         #endregion
@@ -747,6 +803,47 @@ namespace MC104
             }
         }
 
+        private void removePathDataButton_Click(object sender, EventArgs e)
+        {
+            if (pathDataListBox.SelectedItem == null)
+            {
+                MessageBox.Show("Please select a path data file to remove.", "No File Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            string fileName = pathDataListBox.SelectedItem.ToString();
+            string dataDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data");
+            string filePath = Path.Combine(dataDirectory, fileName);
+
+            var confirmResult = MessageBox.Show($"Are you sure you want to permanently delete '{fileName}'?",
+                                             "Confirm Deletion",
+                                             MessageBoxButtons.YesNo,
+                                             MessageBoxIcon.Question);
+
+            if (confirmResult == DialogResult.Yes)
+            {
+                try
+                {
+                    if (File.Exists(filePath))
+                    {
+                        File.Delete(filePath);
+                        LogMessage($"Successfully removed '{fileName}' from the data directory.");
+                        RefreshPathDataList();
+                    }
+                    else
+                    {
+                        MessageBox.Show($"File '{fileName}' not found. It may have already been deleted.", "File Not Found", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        RefreshPathDataList(); // Refresh to update UI
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error removing file: {ex.Message}", "File Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    LogMessage($"ERROR: Failed to remove file '{fileName}'. {ex.Message}");
+                }
+            }
+        }
+
         private void loadPathDataButton_Click(object sender, EventArgs e)
         {
             if (controllerServer == null)
@@ -761,13 +858,22 @@ namespace MC104
                 return;
             }
 
+            if (selectedControllers.Count == 0)
+            {
+                MessageBox.Show("Please select a target controller before loading a path.", "No Controller Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             try
             {
                 string fileName = pathDataListBox.SelectedItem.ToString();
                 string dataDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data");
                 string filePath = Path.Combine(dataDirectory, fileName);
 
-                controllerServer.LoadPathDataFromFile(filePath);
+                foreach (var controllerId in selectedControllers)
+                {
+                    controllerServer.LoadPathDataFromFile(controllerId, filePath);
+                }
             }
             catch (Exception ex)
             {
@@ -784,8 +890,29 @@ namespace MC104
                 return;
             }
 
-            // In mock mode, we can assume MC1 and MC2. For real mode, you might need to select them.
-            _ = controllerServer.PathTracking("MC1", "MC2");
+            if (selectedControllers.Count == 0)
+            {
+                MessageBox.Show("Please select a target controller to start path tracking.", "No Controller Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            /// Check which motion mode is selected
+            if (cpModeButton.Checked)
+            {
+                LogMessage("Starting Path Tracking in CP (Continuous Path) mode...");
+                /// Start path tracking on the selected controllers in parallel CP mode.
+                _ = controllerServer.PathTrackingCP_Parallel(selectedControllers);
+            }
+            else if (ptpModeButton.Checked)
+            {
+                LogMessage("Starting Path Tracking in PTP (Point-to-Point) mode...");
+                /// Start path tracking on the selected controllers in parallel PTP mode.
+                _ = controllerServer.PathTracking_Parallel(selectedControllers);
+            }
+            else
+            {
+                MessageBox.Show("Please select a motion mode (PTP or CP) before starting.", "Motion Mode Not Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
         #endregion
     }
