@@ -495,7 +495,7 @@ namespace MicrosupportController
                 int irange = (speed > 81910) ? 100 : 10;
 
                 /// Sets motion mode.
-                speedData.dwMode = 2; // 1 for trapezoidal speed profile
+                speedData.dwMode = 0; // 1 for trapezoidal speed profile
                 /// Sets the internal range divisor. Smaller values = finer control.
                 speedData.dwRange = (uint)range;
                 /// dwHighSpeed: max target speed (in PPS)
@@ -510,7 +510,7 @@ namespace MicrosupportController
                 if (speedData.dwHighSpeed < speedData.dwLowSpeed)
                     speedData.dwHighSpeed = speedData.dwLowSpeed;
 
-                speedData.dwRate = new uint[] { 50, 8191, 8191 }; // Acceleration rate for each segment of motion (multi-stage ramp-up).
+                speedData.dwRate = new uint[] { 10, 8191, 8191 }; // Acceleration rate for each segment of motion (multi-stage ramp-up).
                 speedData.dwRateChgPnt = new uint[] { 8191, 8191 }; // Points where the rate changes. Use 8191 means a simple trapezoidal drive.
 
                 /// Compute S-curve weighting factor based on speed difference.
@@ -712,6 +712,22 @@ namespace MicrosupportController
         {
             uint distance = (uint)Um2enc(axis, umDistance);
             return StartIncEnc(axis, direction, distance);
+        }
+
+        public uint StartIncAll(DIRECTION xDir, double xUm,
+                                    DIRECTION yDir, double yUm,
+                                    DIRECTION zDir, double zUm)
+        {
+            uint resX = StartInc(AXIS.X, xDir, xUm);
+            uint resY = StartInc(AXIS.Y, yDir, yUm);
+            uint resZ = StartInc(AXIS.Z, zDir, zUm);
+            if (resX != Hpmcstd.MCSD_ERROR_SUCCESS)
+                return resX;
+            if (resY != Hpmcstd.MCSD_ERROR_SUCCESS)
+                return resY;
+            if (resZ != Hpmcstd.MCSD_ERROR_SUCCESS)
+                return resZ;
+            return Hpmcstd.MCSD_ERROR_SUCCESS;
         }
 
         /// <summary>
