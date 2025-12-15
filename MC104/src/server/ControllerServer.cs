@@ -759,7 +759,7 @@ namespace MC104.server
                 // Wait for the final segment to complete.
                 await controller.Wait();
 
-                double[] finalPos = controller.GetPositions();
+                double[] finalPos = controller.GetPositionsFromCenter();
                 NotifyClientConnection($"[CP] Motion Complete for {id}. Final Pos: ({finalPos[0]:F1}, {finalPos[1]:F1}, {finalPos[2]:F1}).");
 
                 isPathReady[id] = false; // Path consumed
@@ -799,7 +799,7 @@ namespace MC104.server
        /// <summary>
         /// Calculates and applies speed overrides for each axis based on displacement, but only if the speed differences are significant.
         /// </summary>
-        static void AdjustSpeedsConditionally(Microsupport controller, double dx, double dy, double dz)
+        static void AdjustSpeeds(Microsupport controller, double dx, double dy, double dz)
         {
             const double MIN_SPEED_UM = 100.0;
             const double SPEED_CHANGE_THRESHOLD = 0.10; // 10%
@@ -844,11 +844,17 @@ namespace MC104.server
             double dy = end.Y - start.Y;
             double dz = end.Z - start.Z;
 
-            AdjustSpeedsConditionally(controller, dx, dy, dz);
+            AdjustSpeeds(controller, dx, dy, dz);
 
-            controller.StartIncAll(Microsupport.DIRECTION.FORWARD, dx,
-                                   Microsupport.DIRECTION.FORWARD, dy,
-                                   Microsupport.DIRECTION.FORWARD, dz);
+            /// Determine directions based on displacement signs
+            var xDir = dx >= 0 ? Microsupport.DIRECTION.FORWARD : Microsupport.DIRECTION.REVERSE;
+            var yDir = dy >= 0 ? Microsupport.DIRECTION.FORWARD : Microsupport.DIRECTION.REVERSE;
+            var zDir = dz >= 0 ? Microsupport.DIRECTION.REVERSE : Microsupport.DIRECTION.FORWARD; // Note: Z axis direction is inverted considering the physical setup of Microsupport
+
+            controller.StartIncAll(xDir, Math.Abs(dx),
+                                   yDir, Math.Abs(dy),
+                                   zDir, Math.Abs(dz));
+
             await Task.Delay(1);
         }
 
@@ -874,7 +880,7 @@ namespace MC104.server
             {
                 if (safetyTimer.ElapsedMilliseconds > timeoutLimit) return false;
 
-                double[] currentPos = controller.GetPositions();
+                double[] currentPos = controller.GetPositionsFromCenter();
                 double dx = currentTarget.X - currentPos[0];
                 double dy = currentTarget.Y - currentPos[1];
                 double dz = currentTarget.Z - currentPos[2];
@@ -888,7 +894,7 @@ namespace MC104.server
                     double next_dy = nextTarget.Y - currentTarget.Y;
                     double next_dz = nextTarget.Z - currentTarget.Z;
 
-                    AdjustSpeedsConditionally(controller, next_dx, next_dy, next_dz);
+                    AdjustSpeeds(controller, next_dx, next_dy, next_dz);
 
                     if (Math.Abs(next_dx) > 0.001) controller.IndexOverride(Microsupport.AXIS.X, pulseX);
                     if (Math.Abs(next_dy) > 0.001) controller.IndexOverride(Microsupport.AXIS.Y, pulseY);
