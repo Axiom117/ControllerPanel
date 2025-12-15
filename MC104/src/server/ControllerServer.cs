@@ -11,6 +11,7 @@ using System.Windows.Forms;
 using System.Linq;
 using System.Numerics;
 using System.IO;
+using System.Diagnostics;
 
 namespace MC104.server
 {
@@ -35,7 +36,7 @@ namespace MC104.server
 
         /// Configuration
         private readonly int localServerPort = 5000;
-        private const double BASE_SPEED_UM = 2500;  // 5 mm/s
+        private const double BASE_SPEED_UM = 2500;  // 2.5 mm/s
         private const double OVERRIDE_DISTANCE_THRESHOLD = 250.0; // um
 
 
@@ -686,171 +687,224 @@ namespace MC104.server
         }
 
         /// <summary>
-        /// PathTrackingCP - Execute stored trajectory using Continuous Path (Index Override)
+        /// Executes a stored trajectory using Continuous Path (CP) motion with index override.
         /// </summary>
         public async Task<string> PathTrackingCP(string id)
         {
             if (!isPathReady.ContainsKey(id) || !isPathReady[id])
                 return $"ERROR, 104, No path data ready for execution for {id}\n";
 
-            List<TrajectoryPoint> pointsToExecute;
-            lock (lockObject)
+            // In mock mode, fall back to simple PTP tracking as CP logic is hardware-dependent.
+            if (useMockControllers)
             {
-                pointsToExecute = new List<TrajectoryPoint>(trajectoryData[id]);
+                NotifyClientConnection($"[MOCK] CP mode not supported, falling back to standard PTP for {id}.");
+                return await PathTracking(id);
             }
-
-            if (pointsToExecute.Count < 2)
-                return $"ERROR, 104, Not enough points for CP trajectory for {id}.\n";
 
             try
             {
-                NotifyClientConnection($"Starting CP path tracking for {id}...");
-
-                if (useMockControllers)
-                {
-                    NotifyClientConnection("[MOCK] CP mode is not supported, falling back to PTP.");
-                    return await PathTracking(id);
-                }
+                NotifyClientConnection($"[CP] Starting High-Precision CP Motion for {id}...");
 
                 var controller = Microsupport.controllers[id];
-
-                /// 1. Start first segment to kick off motion
-                var firstPoint = pointsToExecute[0];
-                NotifyClientConnection($"[CP] {id}: Launching initial move to Point 0.");
-                controller.SetSpeedAll(BASE_SPEED_UM);
-                controller.StartAbsAllFromCenter(firstPoint.X, firstPoint.Y, firstPoint.Z);
-
-                /// 2. Loop through each segment in the trajectory
-                for (int i = 0; i < pointsToExecute.Count - 1; i++)
+                List<TrajectoryPoint> trajectoryPoints;
+                lock (lockObject)
                 {
-                    var currentTarget = pointsToExecute[i];
-                    var nextTarget = pointsToExecute[i + 1];
+                    trajectoryPoints = new List<TrajectoryPoint>(trajectoryData[id]);
+                }
 
-                    NotifyClientConnection($"[CP] {id}: Segment {i}->{i + 1} running. Waiting for override window.");
+                if (trajectoryPoints.Count < 2)
+                {
+                    return $"ERROR, 104, Not enough points for CP trajectory for {id}.\n";
+                }
 
-                    bool overrideTriggered = false;
-                    while (!overrideTriggered && controller.IsBusy())
+                // 1. Configure speed and ensure axes are homed and ready.
+                controller.SetSpeedAll(BASE_SPEED_UM);
+
+                // 'chainStartPoint' acts as the reference origin for the current continuous move chain.
+                TrajectoryPoint chainStartPoint = trajectoryPoints[0];
+
+                // 2. Start the initial segment (P0 -> P1).
+                NotifyClientConnection($"[CP] Starting initial segment (Point 0 -> Point 1) for {id}...");
+                await StartSegmentSync(controller, trajectoryPoints[0], trajectoryPoints[1]);
+
+                // 3. Iterate through subsequent segments.
+                for (int i = 1; i < trajectoryPoints.Count - 1; i++)
+                {
+                    var currentTarget = trajectoryPoints[i];
+                    var nextTarget = trajectoryPoints[i + 1];
+                    var prevTarget = trajectoryPoints[i - 1];
+
+                    bool isContinuous = CheckContinuity(prevTarget, currentTarget, nextTarget);
+
+                    if (isContinuous)
                     {
-                        double[] pos = controller.GetPositionsFromCenter();
-                        double dist = Math.Sqrt(Math.Pow(currentTarget.X - pos[0], 2) + Math.Pow(currentTarget.Y - pos[1], 2) + Math.Pow(currentTarget.Z - pos[2], 2));
-
-                        if (dist < OVERRIDE_DISTANCE_THRESHOLD)
+                        bool overrideSuccess = await WaitForOverrideWindowAndExecute_HighFreq(controller, currentTarget, nextTarget, chainStartPoint);
+                        if (!overrideSuccess)
                         {
-                            NotifyClientConnection($"[CP] {id}: In override window. Overriding to Point {i + 1}.");
-                            ApplyIndexOverride(controller, currentTarget.X, currentTarget.Y, currentTarget.Z, nextTarget.X, nextTarget.Y, nextTarget.Z);
-                            overrideTriggered = true;
+                            NotifyClientConnection($"[CP] WARNING: Missed override window at Point {i} for {id}. Resyncing...");
+                            await controller.Wait();
+                            chainStartPoint = currentTarget;
+                            await StartSegmentSync(controller, currentTarget, nextTarget);
                         }
-
-                        await Task.Delay(1);
                     }
-
-                    NotifyClientConnection($"[CP] {id}: Segment {i}->{i + 1} override complete.");
-
-                    if (!controller.IsBusy() && i < pointsToExecute.Count - 2)
+                    else
                     {
-                        NotifyClientConnection($"[CP] {id}: Motion stopped unexpectedly after segment {i}.");
-                        return $"ERROR, 104, Motion stopped unexpectedly during CP path for {id}.\n";
+                        NotifyClientConnection($"[CP] Segment {i}->{i + 1}: Discontinuous. Stopping at Point {i} for {id}.");
+                        await controller.Wait();
+                        chainStartPoint = currentTarget;
+                        await StartSegmentSync(controller, currentTarget, nextTarget);
                     }
                 }
 
+                // Wait for the final segment to complete.
                 await controller.Wait();
-                isPathReady[id] = false; // Path consumed
-                NotifyClientConnection($"Path tracking completed for {id}");
 
+                double[] finalPos = controller.GetPositions();
+                NotifyClientConnection($"[CP] Motion Complete for {id}. Final Pos: ({finalPos[0]:F1}, {finalPos[1]:F1}, {finalPos[2]:F1}).");
+
+                isPathReady[id] = false; // Path consumed
                 return $"PATH_COMPLETED, {id}\n";
             }
             catch (Exception ex)
             {
                 isPathReady[id] = false;
-                return $"ERROR, 104, Motion execution failure for {id}: {ex.Message}\n";
+                return $"ERROR, 104, CP motion execution failure for {id}: {ex.Message}\n";
             }
         }
 
-        private void ApplyIndexOverride(Microsupport controller, double currentX, double currentY, double currentZ, double nextX, double nextY, double nextZ)
+        #endregion
+
+        #region CP Motion Helper Methods
+
+        /// <summary>
+        /// Checks if the motion vector allows for a continuous override.
+        /// </summary>
+        private bool CheckContinuity(TrajectoryPoint p1, TrajectoryPoint p2, TrajectoryPoint p3)
+        {
+            double dx1 = p2.X - p1.X;
+            double dy1 = p2.Y - p1.Y;
+            double dz1 = p2.Z - p1.Z;
+
+            double dx2 = p3.X - p2.X;
+            double dy2 = p3.Y - p2.Y;
+            double dz2 = p3.Z - p2.Z;
+
+            if (Math.Sign(dx1) != Math.Sign(dx2)) return false;
+            if (Math.Sign(dy1) != Math.Sign(dy2)) return false;
+            if (Math.Sign(dz1) != Math.Sign(dz2)) return false;
+
+            return true;
+        }
+
+       /// <summary>
+        /// Calculates and applies speed overrides for each axis based on displacement, but only if the speed differences are significant.
+        /// </summary>
+        static void AdjustSpeedsConditionally(Microsupport controller, double dx, double dy, double dz)
         {
             const double MIN_SPEED_UM = 100.0;
-            const double MOTION_TOLERANCE = 1.0;
+            const double SPEED_CHANGE_THRESHOLD = 0.10; // 10%
 
-            /// Speed override logic (using absolute coordinates)
-            double nextDx = nextX - currentX;
-            double nextDy = nextY - currentY;
-            double nextDz = nextZ - currentZ;
-            double maxDisplacement = Math.Max(Math.Abs(nextDx), Math.Max(Math.Abs(nextDy), Math.Abs(nextDz)));
+            double maxDisplacement = Math.Max(Math.Abs(dx), Math.Max(Math.Abs(dy), Math.Abs(dz)));
+            if (maxDisplacement < 1e-6) return; // No movement
 
-            /// If displacement is within tolerance, no need to override
-            if (maxDisplacement <= MOTION_TOLERANCE)
+            // Calculate new target speeds
+            double targetSpeedX = BASE_SPEED_UM * (Math.Abs(dx) / maxDisplacement);
+            double targetSpeedY = BASE_SPEED_UM * (Math.Abs(dy) / maxDisplacement);
+            double targetSpeedZ = BASE_SPEED_UM * (Math.Abs(dz) / maxDisplacement);
+
+            // Get current speeds from the controller
+            double currentSpeedX = controller.GetSpeed(Microsupport.AXIS.X);
+            double currentSpeedY = controller.GetSpeed(Microsupport.AXIS.Y);
+            double currentSpeedZ = controller.GetSpeed(Microsupport.AXIS.Z);
+
+            // Check each axis individually
+            bool needsUpdateX = Math.Abs(targetSpeedX - currentSpeedX) > currentSpeedX * SPEED_CHANGE_THRESHOLD;
+            bool needsUpdateY = Math.Abs(targetSpeedY - currentSpeedY) > currentSpeedY * SPEED_CHANGE_THRESHOLD;
+            bool needsUpdateZ = Math.Abs(targetSpeedZ - currentSpeedZ) > currentSpeedZ * SPEED_CHANGE_THRESHOLD;
+
+            if (needsUpdateX || needsUpdateY || needsUpdateZ)
             {
-                return;
-            }
-
-            if (maxDisplacement > 1e-6)
-            {
-                double speedX = Math.Abs(nextDx) > MOTION_TOLERANCE ? BASE_SPEED_UM * (Math.Abs(nextDx) / maxDisplacement) : MIN_SPEED_UM;
-                double speedY = Math.Abs(nextDy) > MOTION_TOLERANCE ? BASE_SPEED_UM * (Math.Abs(nextDy) / maxDisplacement) : MIN_SPEED_UM;
-                double speedZ = Math.Abs(nextDz) > MOTION_TOLERANCE ? BASE_SPEED_UM * (Math.Abs(nextDz) / maxDisplacement) : MIN_SPEED_UM;
-
-                if (Math.Abs(nextDx) > MOTION_TOLERANCE) controller.HiSpeedOverride(Microsupport.AXIS.X, (uint)Math.Max(speedX, MIN_SPEED_UM));
-                if (Math.Abs(nextDy) > MOTION_TOLERANCE) controller.HiSpeedOverride(Microsupport.AXIS.Y, (uint)Math.Max(speedY, MIN_SPEED_UM));
-                if (Math.Abs(nextDz) > MOTION_TOLERANCE) controller.HiSpeedOverride(Microsupport.AXIS.Z, (uint)Math.Max(speedZ, MIN_SPEED_UM));
-
-                NotifyClientConnection($"[CP] Speed override applied: X={Math.Max(speedX, MIN_SPEED_UM):F2} um/s, Y={Math.Max(speedY, MIN_SPEED_UM):F2} um/s, Z={Math.Max(speedZ, MIN_SPEED_UM):F2} um/s.");
-            }
-
-            /// Index override logic (using absolute coordinates)
-            if (Math.Abs(nextDx) > 1e-6)
-            {
-                if (controller.IsBusy(Microsupport.AXIS.X))
-                {
-                    controller.IndexOverride(Microsupport.AXIS.X, (uint)controller.Um2enc(Microsupport.AXIS.X, nextX));
-                    NotifyClientConnection($"[CP] X Axis busy, applying index override to {nextX:F2} um absolute.");
-                }
-                else
-                {
-                    controller.StartAbsFromCenter(Microsupport.AXIS.X, nextX);
-                    NotifyClientConnection($"[CP] X Axis not busy, starting absolute move to {nextX:F2} um from center.");
-                }
+                Console.WriteLine($"[CP] Speeds adjusted for next segment: X={targetSpeedX:F0}, Y={targetSpeedY:F0}, Z={targetSpeedZ:F0} um/s");
+                if (Math.Abs(dx) > 1e-6) controller.SpeedOverride(Microsupport.AXIS.X, (uint)Math.Max(targetSpeedX, MIN_SPEED_UM));
+                if (Math.Abs(dy) > 1e-6) controller.SpeedOverride(Microsupport.AXIS.Y, (uint)Math.Max(targetSpeedY, MIN_SPEED_UM));
+                if (Math.Abs(dz) > 1e-6) controller.SpeedOverride(Microsupport.AXIS.Z, (uint)Math.Max(targetSpeedZ, MIN_SPEED_UM));
             }
             else
             {
-                controller.StopAxis(Microsupport.AXIS.X);
-            }
-
-            if (Math.Abs(nextDy) > 1e-6)
-            {
-                if (controller.IsBusy(Microsupport.AXIS.Y))
-                {
-                    controller.IndexOverride(Microsupport.AXIS.Y, (uint)controller.Um2enc(Microsupport.AXIS.Y, nextY));
-                    NotifyClientConnection($"[CP] Y Axis busy, applying index override to {nextY:F2} um absolute.");
-                }
-                else
-                {
-                    controller.StartAbsFromCenter(Microsupport.AXIS.Y, nextY);
-                    NotifyClientConnection($"[CP] Y Axis not busy, starting absolute move to {nextY:F2} um from center.");
-                }
-            }
-            else
-            {
-                controller.StopAxis(Microsupport.AXIS.Y);
-            }
-
-            if (Math.Abs(nextDz) > 1e-6)
-            {
-                if (controller.IsBusy(Microsupport.AXIS.Z))
-                {
-                    controller.IndexOverride(Microsupport.AXIS.Z, (uint)controller.Um2enc(Microsupport.AXIS.Z, nextZ));
-                    NotifyClientConnection($"[CP] Z Axis busy, applying index override to {nextZ:F2} um absolute.");
-                }
-                else
-                {
-                    controller.StartAbsFromCenter(Microsupport.AXIS.Z, nextZ);
-                    NotifyClientConnection($"[CP] Z Axis not busy, starting absolute move to {nextZ:F2} um from center.");
-                }
-            }
-            else
-            {
-                controller.StopAxis(Microsupport.AXIS.Z);
+                Console.WriteLine($"[CP] Speed differences are within {SPEED_CHANGE_THRESHOLD:P0}, skipping override.");
             }
         }
+
+        /// <summary>
+        /// Starts a synchronized movement for all axes.
+        /// </summary>
+        private async Task StartSegmentSync(Microsupport controller, TrajectoryPoint start, TrajectoryPoint end)
+        {
+            double dx = end.X - start.X;
+            double dy = end.Y - start.Y;
+            double dz = end.Z - start.Z;
+
+            AdjustSpeedsConditionally(controller, dx, dy, dz);
+
+            controller.StartIncAll(Microsupport.DIRECTION.FORWARD, dx,
+                                   Microsupport.DIRECTION.FORWARD, dy,
+                                   Microsupport.DIRECTION.FORWARD, dz);
+            await Task.Delay(1);
+        }
+
+        /// <summary>
+        /// High-frequency polling loop to trigger IndexOverride.
+        /// </summary>
+        private async Task<bool> WaitForOverrideWindowAndExecute_HighFreq(Microsupport controller, TrajectoryPoint currentTarget, TrajectoryPoint nextTarget, TrajectoryPoint chainStart)
+        {
+            Stopwatch safetyTimer = Stopwatch.StartNew();
+            long timeoutLimit = 2000; // 2 seconds safety limit
+
+            double totalDistX = Math.Abs(nextTarget.X - chainStart.X);
+            double totalDistY = Math.Abs(nextTarget.Y - chainStart.Y);
+            double totalDistZ = Math.Abs(nextTarget.Z - chainStart.Z);
+
+            uint pulseX = (uint)controller.Um2enc(Microsupport.AXIS.X, totalDistX);
+            uint pulseY = (uint)controller.Um2enc(Microsupport.AXIS.Y, totalDistY);
+            uint pulseZ = (uint)controller.Um2enc(Microsupport.AXIS.Z, totalDistZ);
+
+            double thresholdSq = OVERRIDE_DISTANCE_THRESHOLD * OVERRIDE_DISTANCE_THRESHOLD;
+
+            while (controller.IsBusy())
+            {
+                if (safetyTimer.ElapsedMilliseconds > timeoutLimit) return false;
+
+                double[] currentPos = controller.GetPositions();
+                double dx = currentTarget.X - currentPos[0];
+                double dy = currentTarget.Y - currentPos[1];
+                double dz = currentTarget.Z - currentPos[2];
+                double distSq = dx * dx + dy * dy + dz * dz;
+
+                if (distSq <= thresholdSq)
+                {
+                    NotifyClientConnection($"[CP] Override Window Reached. Executing Override to ({nextTarget.X}, {nextTarget.Y}, {nextTarget.Z})");
+
+                    double next_dx = nextTarget.X - currentTarget.X;
+                    double next_dy = nextTarget.Y - currentTarget.Y;
+                    double next_dz = nextTarget.Z - currentTarget.Z;
+
+                    AdjustSpeedsConditionally(controller, next_dx, next_dy, next_dz);
+
+                    if (Math.Abs(next_dx) > 0.001) controller.IndexOverride(Microsupport.AXIS.X, pulseX);
+                    if (Math.Abs(next_dy) > 0.001) controller.IndexOverride(Microsupport.AXIS.Y, pulseY);
+                    if (Math.Abs(next_dz) > 0.001) controller.IndexOverride(Microsupport.AXIS.Z, pulseZ);
+
+                    return true;
+                }
+
+                NotifyClientConnection($"[CP] Waiting for Override Window. Current Position: ({currentPos[0]:F1}, {currentPos[1]:F1}, {currentPos[2]:F1})");
+
+                Thread.SpinWait(1);
+            }
+
+            return false; // Controller stopped before threshold was reached
+        }
+
 
         #endregion
 

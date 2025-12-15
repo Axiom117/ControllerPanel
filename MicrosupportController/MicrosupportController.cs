@@ -40,7 +40,7 @@ namespace MicrosupportController
     {
         /// A static object used to synchronize access to shared resources in a thread-safe manner.
         private static readonly object instanceLock = new object();
-        
+
         #region Class properties and variables
 
 
@@ -412,7 +412,7 @@ namespace MicrosupportController
                     if ((dwData & 0x08000000) == 0x08000000)
                     {
                         /// This bitwise OR operation sets the top 4 bits of the dwData variable to 1, if bit 27 is 1.
-                        dwData |= 0xF0000000; 
+                        dwData |= 0xF0000000;
                     }
 
                     pos[i] = (int)dwData;
@@ -475,7 +475,7 @@ namespace MicrosupportController
                 posFromCenter = new double[3];
                 posFromCenter[0] = posAbs[0] - RANGE_X / 2; // Distance from center of X axis
                 posFromCenter[1] = posAbs[1] - RANGE_Y / 2; // Distance from center of Y axis
-                posFromCenter[2] = - posAbs[2] + RANGE_Z / 2; // Distance from center of Z axis
+                posFromCenter[2] = -posAbs[2] + RANGE_Z / 2; // Distance from center of Z axis
             }
             return posFromCenter;
         }
@@ -515,7 +515,7 @@ namespace MicrosupportController
 
                 /// Compute S-curve weighting factor based on speed difference.
                 uint speedDiff = speedData.dwHighSpeed - speedData.dwLowSpeed;
-                uint scwValue = (uint)(speedDiff / 2.0); 
+                uint scwValue = (uint)(speedDiff / 2.0);
 
                 if (scwValue > 4095) scwValue = 4095; // Cap the value to a maximum of 4095.
                 speedData.dwScw = new uint[] { scwValue, scwValue }; // S-curve weighting factor.
@@ -538,7 +538,7 @@ namespace MicrosupportController
                     default:
                         /// Fallback if not valid.
                         return Hpmcstd.MCSD_ERROR_AXIS;
-                }                
+                }
             }
             /// Fallback if not valid.
             return Hpmcstd.MCSD_ERROR_NO_DEVICE;
@@ -550,6 +550,52 @@ namespace MicrosupportController
         public uint SetSpeed(AXIS axis, double speed)
         {
             return SetSpeedEnc(axis, Um2enc(axis, speed));
+        }
+
+        /// <summary>
+        /// Retrieves the current speed setting for the specified axis in encoder units (pulses/sec).
+        /// </summary>
+        public int GetSpeedEnc(AXIS axis)
+        {
+            if (this.IsValid)
+            {
+                Hpmcstd.MCSDSPDDATA speedData = new Hpmcstd.MCSDSPDDATA();
+                ushort axisCode = 0;
+
+                switch (axis)
+                {
+                    case AXIS.X:
+                        axisCode = MC104_AXIS2;
+                        break;
+                    case AXIS.Y:
+                        axisCode = MC104_AXIS1;
+                        break;
+                    case AXIS.Z:
+                        axisCode = MC104_AXIS3;
+                        break;
+                    default:
+                        return 0; // Invalid axis
+                }
+
+                uint result = Hpmcstd.McsdGetSpeed(hController, axisCode, out speedData);
+                if (result == Hpmcstd.MCSD_ERROR_SUCCESS)
+                {
+                    // Reconstruct the speed in pps from the returned data.
+                    // This logic is the reverse of what's in SetSpeedEnc.
+                    int irange = (speedData.dwRange == 10) ? 100 : 10;
+                    return (int)(speedData.dwHighSpeed * irange);
+                }
+            }
+            return 0; // Error or invalid state
+        }
+
+        /// <summary>
+        /// Retrieves the current speed setting for the specified axis in um/sec.
+        /// </summary>
+        public double GetSpeed(AXIS axis)
+        {
+            int speedEnc = GetSpeedEnc(axis);
+            return Enc2um(axis, speedEnc);
         }
 
         /// <summary>
@@ -806,14 +852,14 @@ namespace MicrosupportController
 
         public void StartAbsAllFromCenter(double x, double y, double z)
         {
-            StartIncAbsAll(x + RANGE_X/2, y + RANGE_Y/2, -z + RANGE_Z/2);
+            StartIncAbsAll(x + RANGE_X / 2, y + RANGE_Y / 2, -z + RANGE_Z / 2);
         }
 
         /// Relative step movement from the current position of the axes. Origin is the center of the stoke.
         public async Task StartAbsAllFromCenterAsync(double x, double y, double z)
         {
 
-            StartIncAbsAll(x + RANGE_X/2, y + RANGE_Y/2, -z + RANGE_Z/2);
+            StartIncAbsAll(x + RANGE_X / 2, y + RANGE_Y / 2, -z + RANGE_Z / 2);
 
             await Wait();
         }

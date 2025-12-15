@@ -180,33 +180,33 @@ namespace IndexOverrideTest
             Console.WriteLine("[CP] Starting High-Precision CP Motion...");
             Stopwatch sw = Stopwatch.StartNew();
 
-            // 1. Configure linear acceleration mode
-            // Crucial: S-Curve mode causes vibrations during overrides. Linear mode is required.
+            /// 1. Configure linear acceleration mode
+            /// Crucial: S-Curve mode causes vibrations during overrides. Linear mode is required.
             controller.SetSpeedAll(BASE_SPEED_UM);
 
-            // 'chainStartPoint' acts as the reference origin for the current continuous move chain.
-            // It resets only when the motion fully stops and restarts.
+            /// 'chainStartPoint' acts as the reference origin for the current continuous move chain.
+            /// It resets only when the motion fully stops and restarts.
             TrajectoryPoint chainStartPoint = trajectoryPoints[0];
 
-            // 2. Start the initial segment (P0 -> P1) immediately
-            // Assumption: The end-effector is already physically at Point 0.
+            /// 2. Start the initial segment (P0 -> P1) immediately
+            /// Assumption: The end-effector is already physically at Point 0.
             Console.WriteLine($"[CP] Starting initial segment (Point 0 -> Point 1)...");
             await StartSegmentSync(trajectoryPoints[0], trajectoryPoints[1]);
 
-            // 3. Iterate through subsequent segments
+            /// 3. Iterate through subsequent segments
             for (int i = 1; i < trajectoryPoints.Count - 1; i++)
             {
                 var currentTarget = trajectoryPoints[i];     // Target of the currently active move
                 var nextTarget = trajectoryPoints[i + 1];    // Target to override TO
                 var prevTarget = trajectoryPoints[i - 1];    // Origin of the current move
 
-                // --- Continuity Check ---
-                // Evaluate if the transition from (Prev->Curr) to (Curr->Next) maintains directional consistency.
+                /// --- Continuity Check ---
+                /// Evaluate if the transition from (Prev->Curr) to (Curr->Next) maintains directional consistency.
                 bool isContinuous = CheckContinuity(prevTarget, currentTarget, nextTarget);
 
                 if (isContinuous)
                 {
-                    // [CASE A] Continuous Motion
+                    /// [CASE A] Continuous Motion
                     // Direction is maintained. We can override "on the fly".
                     // Console.WriteLine($"[CP] Segment {i}->{i+1}: Continuous. Polling for override...");
 
