@@ -310,7 +310,8 @@ namespace MC104.server
                     case "GET_STATUS":
                         if (parts.Length < 2)
                             return "ERROR, 101, Invalid parameters for GET_STATUS\n";
-                        return await SendStatus(parts[1]);
+                        string[] ids = parts.Skip(1).ToArray();
+                        return await SendStatus(ids);
 
                     case "START_STEP":
                         if (parts.Length < 5)
@@ -431,45 +432,53 @@ namespace MC104.server
         #region API Methods Implementation
 
         /// Send status of a manipulator with a given ID
-        private async Task<string> SendStatus(string id)
+        private async Task<string> SendStatus(params string[] ids)
         {
             try
             {
-                double x = 0, y = 0, z = 0;
+                var statusParts = new List<string> { "STATUS" };
 
-                if (useMockControllers)
+                foreach (var id in ids)
                 {
-                    if (mockControllers.ContainsKey(id))
-                    {
-                        var controller = mockControllers[id];
-                        x = controller.X;
-                        y = controller.Y;
-                        z = controller.Z;
+                    double x = 0, y = 0, z = 0;
 
-                        NotifyClientConnection($"[MOCK] Status for {id}: X={x:F2}, Y={y:F2}, Z={z:F2}");
+                    if (useMockControllers)
+                    {
+                        if (mockControllers.ContainsKey(id))
+                        {
+                            var controller = mockControllers[id];
+                            x = controller.X;
+                            y = controller.Y;
+                            z = controller.Z;
+                            NotifyClientConnection($"[MOCK] Status for {id}: X={x:F2}, Y={y:F2}, Z={z:F2}");
+                        }
+                        else
+                        {
+                            return $"ERROR, 102, Manipulator ID {id} not found\n";
+                        }
                     }
                     else
                     {
-                        return $"ERROR, 102, Manipulator ID {id} not found\n";
+                        if (Microsupport.controllers.ContainsKey(id))
+                        {
+                            var controller = Microsupport.controllers[id];
+                            var pos = await Task.Run(() => controller.GetPositionsFromCenter());
+                            x = pos[0];
+                            y = pos[1];
+                            z = pos[2];
+                        }
+                        else
+                        {
+                            return $"ERROR, 102, Manipulator ID {id} not found\n";
+                        }
                     }
-                }
-                else
-                {
-                    if (Microsupport.controllers.ContainsKey(id))
-                    {
-                        var controller = Microsupport.controllers[id];
-                        var pos = await Task.Run(() => controller.GetPositionsFromCenter());
-                        x = pos[0];
-                        y = pos[1];
-                        z = pos[2];
-                    }
-                    else
-                    {
-                        return $"ERROR, 102, Manipulator ID {id} not found\n";
-                    }
+                    statusParts.Add(id);
+                    statusParts.Add($"{x:F2}");
+                    statusParts.Add($"{y:F2}");
+                    statusParts.Add($"{z:F2}");
                 }
 
-                return $"STATUS, {id}, {x:F2}, {y:F2}, {z:F2}\n";
+                return string.Join(", ", statusParts) + "\n";
             }
             catch (Exception ex)
             {
