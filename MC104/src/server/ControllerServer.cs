@@ -696,6 +696,28 @@ namespace MC104.server
         }
 
         /// <summary>
+        /// Executes a stored trajectory using Point-to-Point (PTP) motion for multiple controllers in parallel.
+        /// </summary>
+        public async Task PathTracking_Parallel(List<string> ids)
+        {
+            var trackingTasks = new List<Task<string>>();
+
+            foreach (var id in ids)
+            {
+                trackingTasks.Add(Task.Run(() => PathTracking(id)));
+            }
+
+            // Wait for all path tracking tasks to complete.
+            var results = await Task.WhenAll(trackingTasks);
+
+            // Log the results for each controller.
+            for (int i = 0; i < ids.Count; i++)
+            {
+                NotifyClientConnection($"Parallel PTP execution result for {ids[i]}: {results[i].Trim()}");
+            }
+        }
+
+        /// <summary>
         /// Executes a stored trajectory using Continuous Path (CP) motion with index override.
         /// </summary>
         public async Task<string> PathTrackingCP(string id)

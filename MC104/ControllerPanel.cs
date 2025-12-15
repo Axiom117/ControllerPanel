@@ -605,7 +605,7 @@ namespace MC104
                 return;
             }
 
-            // Add timestamp if not already present
+            /// Add timestamp if not already present
             if (!message.StartsWith("[") || !message.Contains("]"))
             {
                 message = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
@@ -615,7 +615,7 @@ namespace MC104
             logTextBox.SelectionStart = logTextBox.Text.Length;
             logTextBox.ScrollToCaret();
 
-            // Update status based on message content
+            /// Update status based on message content
             if (message.Contains("Connected") || message.Contains("connected"))
             {
                 UpdateStatus("Connected", Color.Green);
@@ -629,12 +629,43 @@ namespace MC104
                 UpdateStatus("Path execution completed", Color.Green);
             }
 
-            // Limit log size
+            /// Limit log size
             if (logTextBox.Lines.Length > 1000)
             {
                 var lines = logTextBox.Lines;
                 var newLines = lines.Skip(lines.Length - 800).ToArray();
                 logTextBox.Lines = newLines;
+            }
+        }
+
+        private void clearLogButton_Click(object sender, EventArgs e)
+        {
+            logTextBox.Clear();
+            LogMessage("Log cleared.");
+        }
+
+        private void saveLogButton_Click(object sender, EventArgs e)
+        {
+            using (SaveFileDialog saveFileDialog = new SaveFileDialog())
+            {
+                saveFileDialog.Filter = "Log Files (*.log)|*.log|Text Files (*.txt)|*.txt|All files (*.*)|*.*";
+                saveFileDialog.Title = "Save Log File";
+                saveFileDialog.DefaultExt = "log";
+                saveFileDialog.FileName = $"controller_log_{DateTime.Now:yyyyMMdd_HHmmss}";
+
+                if (saveFileDialog.ShowDialog() == DialogResult.OK)
+                {
+                    try
+                    {
+                        File.WriteAllText(saveFileDialog.FileName, logTextBox.Text);
+                        LogMessage($"Log successfully saved to '{saveFileDialog.FileName}'");
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Error saving log file: {ex.Message}", "File Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        LogMessage($"ERROR: Failed to save log file. {ex.Message}");
+                    }
+                }
             }
         }
 
@@ -645,8 +676,6 @@ namespace MC104
                 Invoke(new Action(() => UpdateStatus(message, color)));
                 return;
             }
-
-            statusLabel.Text = message;
         }
 
         #endregion
@@ -774,6 +803,47 @@ namespace MC104
             }
         }
 
+        private void removePathDataButton_Click(object sender, EventArgs e)
+        {
+            if (pathDataListBox.SelectedItem == null)
+            {
+                MessageBox.Show("Please select a path data file to remove.", "No File Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            string fileName = pathDataListBox.SelectedItem.ToString();
+            string dataDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data");
+            string filePath = Path.Combine(dataDirectory, fileName);
+
+            var confirmResult = MessageBox.Show($"Are you sure you want to permanently delete '{fileName}'?",
+                                             "Confirm Deletion",
+                                             MessageBoxButtons.YesNo,
+                                             MessageBoxIcon.Question);
+
+            if (confirmResult == DialogResult.Yes)
+            {
+                try
+                {
+                    if (File.Exists(filePath))
+                    {
+                        File.Delete(filePath);
+                        LogMessage($"Successfully removed '{fileName}' from the data directory.");
+                        RefreshPathDataList();
+                    }
+                    else
+                    {
+                        MessageBox.Show($"File '{fileName}' not found. It may have already been deleted.", "File Not Found", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        RefreshPathDataList(); // Refresh to update UI
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error removing file: {ex.Message}", "File Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    LogMessage($"ERROR: Failed to remove file '{fileName}'. {ex.Message}");
+                }
+            }
+        }
+
         private void loadPathDataButton_Click(object sender, EventArgs e)
         {
             if (controllerServer == null)
@@ -826,8 +896,23 @@ namespace MC104
                 return;
             }
 
-            /// Start path tracking on the selected controllers in parallel mode.
-            _ = controllerServer.PathTrackingCP_Parallel(selectedControllers);
+            /// Check which motion mode is selected
+            if (cpModeButton.Checked)
+            {
+                LogMessage("Starting Path Tracking in CP (Continuous Path) mode...");
+                /// Start path tracking on the selected controllers in parallel CP mode.
+                _ = controllerServer.PathTrackingCP_Parallel(selectedControllers);
+            }
+            else if (ptpModeButton.Checked)
+            {
+                LogMessage("Starting Path Tracking in PTP (Point-to-Point) mode...");
+                /// Start path tracking on the selected controllers in parallel PTP mode.
+                _ = controllerServer.PathTracking_Parallel(selectedControllers);
+            }
+            else
+            {
+                MessageBox.Show("Please select a motion mode (PTP or CP) before starting.", "Motion Mode Not Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
         #endregion
     }

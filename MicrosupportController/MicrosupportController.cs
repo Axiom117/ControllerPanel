@@ -495,7 +495,7 @@ namespace MicrosupportController
                 int irange = (speed > 81910) ? 100 : 10;
 
                 /// Sets motion mode.
-                speedData.dwMode = 0; // 1 for trapezoidal speed profile
+                speedData.dwMode = 0; // 0 for linear speed profile
                 /// Sets the internal range divisor. Smaller values = finer control.
                 speedData.dwRange = (uint)range;
                 /// dwHighSpeed: max target speed (in PPS)
