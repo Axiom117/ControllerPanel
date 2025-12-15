@@ -37,7 +37,7 @@ namespace MC104.server
         /// Configuration
         private readonly int localServerPort = 5000;
         private const double BASE_SPEED_UM = 2500;  // 2.5 mm/s
-        private const double OVERRIDE_DISTANCE_THRESHOLD = 250.0; // um
+        private const double OVERRIDE_DISTANCE_THRESHOLD = 300.0; // um
 
 
         /// Active client connections
@@ -778,6 +778,31 @@ namespace MC104.server
             {
                 isPathReady[id] = false;
                 return $"ERROR, 104, CP motion execution failure for {id}: {ex.Message}\n";
+            }
+        }
+
+        /// <summary>
+        /// Executes a stored trajectory using Continuous Path (CP) motion for multiple controllers in parallel.
+        /// </summary>
+        public async Task PathTrackingCP_Parallel(List<string> ids)
+        {
+            var trackingTasks = new List<Task<string>>();
+
+            foreach (var id in ids)
+            {
+                // For each controller, create a new task to run its path tracking logic.
+                // This ensures each controller's logic runs on a separate thread from the thread pool,
+                // allowing true parallel execution.
+                trackingTasks.Add(Task.Run(() => PathTrackingCP(id)));
+            }
+
+            // Wait for all path tracking tasks to complete.
+            var results = await Task.WhenAll(trackingTasks);
+
+            // Log the results for each controller.
+            for (int i = 0; i < ids.Count; i++)
+            {
+                NotifyClientConnection($"Parallel execution result for {ids[i]}: {results[i].Trim()}");
             }
         }
 
