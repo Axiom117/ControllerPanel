@@ -314,15 +314,37 @@ namespace MC104.server
                         return await SendStatus(ids);
 
                     case "START_STEP":
-                        if (parts.Length < 5)
+                        // Parameters are groups of 4: id, x, y, z. Total params must be 1 (command) + n * 4.
+                        if (parts.Length < 5 || (parts.Length - 1) % 4 != 0)
                             return "ERROR, 101, Invalid parameters for START_STEP\n";
 
-                        string id_step = parts[1];
-                        double x_step = double.Parse(parts[2]);
-                        double y_step = double.Parse(parts[3]);
-                        double z_step = double.Parse(parts[4]);
+                        var moveTasks = new List<Task<string>>();
+                        var controllerIds = new List<string>();
 
-                        return await StepAbsFromCenter(id_step, x_step, y_step, z_step);
+                        for (int i = 1; i < parts.Length; i += 4)
+                        {
+                            string id = parts[i];
+                            double x = double.Parse(parts[i + 1]);
+                            double y = double.Parse(parts[i + 2]);
+                            double z = double.Parse(parts[i + 3]);
+
+                            controllerIds.Add(id);
+                            moveTasks.Add(StepAbsFromCenter(id, x, y, z));
+                        }
+
+                        // Execute all moves in parallel
+                        await Task.WhenAll(moveTasks);
+
+                        // Check results for any errors
+                        foreach (var task in moveTasks)
+                        {
+                            if (task.Result.StartsWith("ERROR"))
+                            {
+                                return task.Result; // Return the first error found
+                            }
+                        }
+
+                        return $"STEP_COMPLETED, {string.Join(", ", controllerIds)}\n";
 
                     case "PATH_DATA":
                         if (parts.Length < 2)

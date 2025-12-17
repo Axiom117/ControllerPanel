@@ -33,14 +33,14 @@ ERROR, <code>, <message>
   STATUS, <id1>, <X1>, <Y1>, <Z1>, <id2>, <X2>, <Y2>, <Z2>
   ```
 
-#### StepInc(id1, id2, X, Y, Z)
+#### StepAbsFromCenter(id1, X, Y, Z)
 
-* **Trigger:** `START_STEP, <id1>, <id2>, <X>, <Y>, <Z>`
+* **Trigger:** `START_STEP, <id1>, <X1>, <Y1>, <Z1>, <id2>, <X2>, <Y2>, <Z2>, <id3>...`
 * **Action:**
 
   1. Validate manipulator IDs and bounds of `(X, Y, Z)`.
   2. Perform incremental move: steps = value / resolution per axis.
-  3. On success, call `SendStatus(id1, id2)`.
+  3. On success, respond with completion message.
 * **Response:**
 
   ```text
