@@ -377,41 +377,32 @@ namespace MC104.server
                         if (parts.Length < 2)
                             return "ERROR, 101, Invalid parameters for START_PATH_CP\n";
 
-                        string id_path_cp = parts[1];
-                        /// Send immediate acknowledgment
-                        string ackResponseCP = $"PATH_TRACKING_CP_STARTED, {id_path_cp}\n";
+                        var ids_path_cp = parts.Skip(1).ToList();
+                        /// Send immediate acknowledgment for all specified controllers
+                        string ackResponseCP = $"PATH_TRACKING_CP_STARTED, {string.Join(", ", ids_path_cp)}\n";
                         byte[] ackDataCP = Encoding.UTF8.GetBytes(ackResponseCP);
                         await stream.WriteAsync(ackDataCP, 0, ackDataCP.Length);
                         await stream.FlushAsync();
                         NotifyClientConnection($"Controller Sent: {ackResponseCP.Trim()}");
 
-                        /// Start path tracking asynchronously
+                        /// Start parallel path tracking asynchronously
                         _ = Task.Run(async () =>
                         {
                             try
                             {
-                                /// Execute path tracking
-                                string result = await PathTrackingCP(id_path_cp);
+                                /// Execute parallel path tracking
+                                await PathTrackingCP_Parallel(ids_path_cp);
 
-                                /// Check if stream is still valid before sending
-                                if (stream.CanWrite)
-                                {
-                                    byte[] resultData = Encoding.UTF8.GetBytes(result);
-                                    await stream.WriteAsync(resultData, 0, resultData.Length);
-                                    await stream.FlushAsync();
-                                    NotifyClientConnection($"Controller Sent: {result.Trim()}");
-                                }
+                                /// After all parallel tasks are complete, we could send a final confirmation.
+                                /// However, PathTrackingCP_Parallel already logs completion for each controller.
+                                /// The API specifies PATH_COMPLETED is sent per controller inside PathTrackingCP.
+                                /// If a collective notification is needed, it can be added here.
                             }
                             catch (Exception ex)
                             {
-                                if (stream.CanWrite)
-                                {
-                                    string errorResult = $"ERROR, 104, Path tracking exception: {ex.Message}\n";
-                                    byte[] errorData = Encoding.UTF8.GetBytes(errorResult);
-                                    await stream.WriteAsync(errorData, 0, errorData.Length);
-                                    await stream.FlushAsync();
-                                    NotifyClientConnection($"Controller Sent: {errorResult.Trim()}");
-                                }
+                                // This top-level catch might be useful for aggregate errors,
+                                // though individual errors are handled within PathTrackingCP.
+                                NotifyClientConnection($"[ERROR] An exception occurred during parallel CP path execution: {ex.Message}");
                             }
                         });
 
@@ -852,7 +843,7 @@ namespace MC104.server
             return true;
         }
 
-       /// <summary>
+        /// <summary>
         /// Calculates and applies speed overrides for each axis based on displacement, but only if the speed differences are significant.
         /// </summary>
         static void AdjustSpeeds(Microsupport controller, double dx, double dy, double dz)
