@@ -36,7 +36,7 @@ namespace MC104.server
 
         /// Configuration
         private readonly int localServerPort = 5000;
-        private const double BASE_SPEED_UM = 500;  // 2.5 mm/s
+        private const double BASE_SPEED_UM = 2500;  // 2.5 mm/s
         private const double OVERRIDE_DISTANCE_THRESHOLD = 400.0; // um
 
 
@@ -730,9 +730,6 @@ namespace MC104.server
             }
         }
 
-        /// <summary>
-        /// Executes a stored trajectory using Continuous Path (CP) motion with index override.
-        /// </summary>
         public async Task<string> PathTrackingCP(string id)
         {
             if (!isPathReady.ContainsKey(id) || !isPathReady[id])
@@ -761,7 +758,7 @@ namespace MC104.server
                     return $"ERROR, 104, Not enough points for CP trajectory for {id}.\n";
                 }
 
-                // Move to the first point of the trajectory before starting CP motion.
+                /// Move to the first point of the trajectory before starting CP motion.
                 var startPoint = trajectoryPoints[0];
                 NotifyClientConnection($"[CP] Moving to start point ({startPoint.X:F1}, {startPoint.Y:F1}, {startPoint.Z:F1}) for {id}...");
                 string preMoveResult = await StepAbsFromCenter(id, startPoint.X, startPoint.Y, startPoint.Z);
@@ -772,17 +769,17 @@ namespace MC104.server
                 }
                 NotifyClientConnection($"[CP] Now at start point for {id}.");
 
-                // 1. Configure speed and ensure axes are homed and ready.
+                /// 1. Configure speed and ensure axes are homed and ready.
                 controller.SetSpeedAll(BASE_SPEED_UM);
 
-                // 'chainStartPoint' acts as the reference origin for the current continuous move chain.
+                /// 'chainStartPoint' acts as the reference origin for the current continuous move chain.
                 TrajectoryPoint chainStartPoint = trajectoryPoints[0];
 
-                // 2. Start the initial segment (P0 -> P1).
+                /// 2. Start the initial segment (P0 -> P1).
                 NotifyClientConnection($"[CP] Starting initial segment (Point 0 -> Point 1) for {id}...");
                 await StartSegmentSync(controller, trajectoryPoints[0], trajectoryPoints[1]);
 
-                // 3. Iterate through subsequent segments.
+                /// 3. Iterate through subsequent segments.
                 for (int i = 1; i < trajectoryPoints.Count - 1; i++)
                 {
                     var currentTarget = trajectoryPoints[i];
@@ -793,7 +790,7 @@ namespace MC104.server
 
                     if (isContinuous)
                     {
-                        bool overrideSuccess = await WaitForOverrideWindowAndExecute_HighFreq(controller, currentTarget, nextTarget, chainStartPoint);
+                        bool overrideSuccess = await WaitForOverrideWindowAndExecute_HighFreq(controller, prevTarget, currentTarget, nextTarget, chainStartPoint);
                         if (!overrideSuccess)
                         {
                             NotifyClientConnection($"[CP] WARNING: Missed override window at Point {i} for {id}. Resyncing...");
@@ -827,6 +824,9 @@ namespace MC104.server
             }
         }
 
+        /// <summary>
+        /// Executes a stored trajectory using Continuous Path (CP) motion for multiple controllers in parallel.
+        /// </summary>
         /// <summary>
         /// Executes a stored trajectory using Continuous Path (CP) motion for multiple controllers in parallel.
         /// </summary>
@@ -941,11 +941,18 @@ namespace MC104.server
         /// <summary>
         /// High-frequency polling loop to trigger IndexOverride.
         /// </summary>
-        private async Task<bool> WaitForOverrideWindowAndExecute_HighFreq(Microsupport controller, TrajectoryPoint currentTarget, TrajectoryPoint nextTarget, TrajectoryPoint chainStart)
+        private async Task<bool> WaitForOverrideWindowAndExecute_HighFreq(Microsupport controller, TrajectoryPoint prevTarget, TrajectoryPoint currentTarget, TrajectoryPoint nextTarget, TrajectoryPoint chainStart)
         {
             Stopwatch safetyTimer = Stopwatch.StartNew();
             long timeoutLimit = 2000; // 2 seconds safety limit
+            const double OVERRIDE_PROGRESS_PERCENT = 0.90; // 90%
 
+            // Calculate total distance for the current segment (prev -> current)
+            double segmentDx = currentTarget.X - prevTarget.X;
+            double segmentDy = currentTarget.Y - prevTarget.Y;
+            double segmentDz = currentTarget.Z - prevTarget.Z;
+
+            // Pre-calculate cumulative override pulse values for the next segment (start -> next)
             double totalDistX = Math.Abs(nextTarget.X - chainStart.X);
             double totalDistY = Math.Abs(nextTarget.Y - chainStart.Y);
             double totalDistZ = Math.Abs(nextTarget.Z - chainStart.Z);
@@ -954,21 +961,27 @@ namespace MC104.server
             uint pulseY = (uint)controller.Um2enc(Microsupport.AXIS.Y, totalDistY);
             uint pulseZ = (uint)controller.Um2enc(Microsupport.AXIS.Z, totalDistZ);
 
-            double thresholdSq = OVERRIDE_DISTANCE_THRESHOLD * OVERRIDE_DISTANCE_THRESHOLD;
-
             while (controller.IsBusy())
             {
                 if (safetyTimer.ElapsedMilliseconds > timeoutLimit) return false;
 
                 double[] currentPos = controller.GetPositionsFromCenter();
-                double dx = currentTarget.X - currentPos[0];
-                double dy = currentTarget.Y - currentPos[1];
-                double dz = currentTarget.Z - currentPos[2];
-                double distSq = dx * dx + dy * dy + dz * dz;
 
-                if (distSq <= thresholdSq)
+                // Calculate travel progress for the current segment
+                double progressX = (Math.Abs(segmentDx) < 1e-6) ? 1.0 : Math.Abs(currentPos[0] - prevTarget.X) / Math.Abs(segmentDx);
+                double progressY = (Math.Abs(segmentDy) < 1e-6) ? 1.0 : Math.Abs(currentPos[1] - prevTarget.Y) / Math.Abs(segmentDy);
+                double progressZ = (Math.Abs(segmentDz) < 1e-6) ? 1.0 : Math.Abs(currentPos[2] - prevTarget.Z) / Math.Abs(segmentDz);
+
+                // Use X-axis progress as the trigger. If X is not moving, use Y, then Z.
+                double triggerProgress = progressX;
+                if (Math.Abs(segmentDx) < 1e-6) triggerProgress = progressY;
+                if (Math.Abs(segmentDy) < 1e-6) triggerProgress = progressZ;
+
+
+                if (triggerProgress >= OVERRIDE_PROGRESS_PERCENT)
                 {
-                    NotifyClientConnection($"[CP] Override Window Reached. Executing Override to ({nextTarget.X}, {nextTarget.Y}, {nextTarget.Z})");
+                    string progressLog = $"X: {progressX:P0}, Y: {progressY:P0}, Z: {progressZ:P0}";
+                    NotifyClientConnection($"[CP] Override Window Reached ({progressLog}). Executing Override to ({nextTarget.X:F1}, {nextTarget.Y:F1}, {nextTarget.Z:F1})");
 
                     double next_dx = nextTarget.X - currentTarget.X;
                     double next_dy = nextTarget.Y - currentTarget.Y;
@@ -983,7 +996,12 @@ namespace MC104.server
                     return true;
                 }
 
-                NotifyClientConnection($"[CP] Waiting for Override Window. Current Position: ({currentPos[0]:F1}, {currentPos[1]:F1}, {currentPos[2]:F1})");
+                // Reduce log frequency to avoid spamming
+                if (safetyTimer.ElapsedMilliseconds % 100 < 5) // Log roughly every 100ms
+                {
+                    NotifyClientConnection($"[CP] Waiting for Override. Pos:({currentPos[0]:F1}, {currentPos[1]:F1}, {currentPos[2]:F1}). Progress: X:{progressX:P0}, Y:{progressY:P0}, Z:{progressZ:P0}");
+                }
+
 
                 Thread.SpinWait(1);
             }
@@ -993,6 +1011,8 @@ namespace MC104.server
 
 
         #endregion
+
+
 
         #region Helper Methods
         private void NotifyClientConnection(string message)
