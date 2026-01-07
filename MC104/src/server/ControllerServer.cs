@@ -36,8 +36,8 @@ namespace MC104.server
 
         /// Configuration
         private readonly int localServerPort = 5000;
-        private const double BASE_SPEED_UM = 2500;  // 2.5 mm/s
-        private const double OVERRIDE_DISTANCE_THRESHOLD = 300.0; // um
+        private const double BASE_SPEED_UM = 500;  // 2.5 mm/s
+        private const double OVERRIDE_DISTANCE_THRESHOLD = 400.0; // um
 
 
         /// Active client connections
@@ -671,7 +671,7 @@ namespace MC104.server
                 if (!useMockControllers)
                 {
                     var controller = Microsupport.controllers[id];
-                    controller.SetSpeedAll(5000);
+                    controller.SetSpeedAll(500);
                 }
 
                 /// Copy trajectory data locally to avoid locking during execution
@@ -760,6 +760,17 @@ namespace MC104.server
                 {
                     return $"ERROR, 104, Not enough points for CP trajectory for {id}.\n";
                 }
+
+                // Move to the first point of the trajectory before starting CP motion.
+                var startPoint = trajectoryPoints[0];
+                NotifyClientConnection($"[CP] Moving to start point ({startPoint.X:F1}, {startPoint.Y:F1}, {startPoint.Z:F1}) for {id}...");
+                string preMoveResult = await StepAbsFromCenter(id, startPoint.X, startPoint.Y, startPoint.Z);
+                if (preMoveResult.StartsWith("ERROR"))
+                {
+                    NotifyClientConnection($"[CP] ERROR: Failed to move to start point for {id}. Aborting.");
+                    return preMoveResult;
+                }
+                NotifyClientConnection($"[CP] Now at start point for {id}.");
 
                 // 1. Configure speed and ensure axes are homed and ready.
                 controller.SetSpeedAll(BASE_SPEED_UM);

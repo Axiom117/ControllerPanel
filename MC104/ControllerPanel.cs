@@ -630,7 +630,7 @@ namespace MC104
             }
 
             /// Limit log size
-            if (logTextBox.Lines.Length > 1000)
+            if (logTextBox.Lines.Length > 3000)
             {
                 var lines = logTextBox.Lines;
                 var newLines = lines.Skip(lines.Length - 800).ToArray();
