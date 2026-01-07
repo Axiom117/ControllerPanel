@@ -36,8 +36,8 @@ namespace MC104.server
 
         /// Configuration
         private readonly int localServerPort = 5000;
-        private const double BASE_SPEED_UM = 2500;  // 2.5 mm/s
-        private const double OVERRIDE_DISTANCE_THRESHOLD = 300.0; // um
+        private const double BASE_SPEED_UM = 500;  // 2.5 mm/s
+        private const double OVERRIDE_DISTANCE_THRESHOLD = 400.0; // um
 
 
         /// Active client connections
@@ -314,15 +314,37 @@ namespace MC104.server
                         return await SendStatus(ids);
 
                     case "START_STEP":
-                        if (parts.Length < 5)
+                        // Parameters are groups of 4: id, x, y, z. Total params must be 1 (command) + n * 4.
+                        if (parts.Length < 5 || (parts.Length - 1) % 4 != 0)
                             return "ERROR, 101, Invalid parameters for START_STEP\n";
 
-                        string id_step = parts[1];
-                        double x_step = double.Parse(parts[2]);
-                        double y_step = double.Parse(parts[3]);
-                        double z_step = double.Parse(parts[4]);
+                        var moveTasks = new List<Task<string>>();
+                        var controllerIds = new List<string>();
 
-                        return await StepAbsFromCenter(id_step, x_step, y_step, z_step);
+                        for (int i = 1; i < parts.Length; i += 4)
+                        {
+                            string id = parts[i];
+                            double x = double.Parse(parts[i + 1]);
+                            double y = double.Parse(parts[i + 2]);
+                            double z = double.Parse(parts[i + 3]);
+
+                            controllerIds.Add(id);
+                            moveTasks.Add(StepAbsFromCenter(id, x, y, z));
+                        }
+
+                        // Execute all moves in parallel
+                        await Task.WhenAll(moveTasks);
+
+                        // Check results for any errors
+                        foreach (var task in moveTasks)
+                        {
+                            if (task.Result.StartsWith("ERROR"))
+                            {
+                                return task.Result; // Return the first error found
+                            }
+                        }
+
+                        return $"STEP_COMPLETED, {string.Join(", ", controllerIds)}\n";
 
                     case "PATH_DATA":
                         if (parts.Length < 2)
@@ -377,41 +399,32 @@ namespace MC104.server
                         if (parts.Length < 2)
                             return "ERROR, 101, Invalid parameters for START_PATH_CP\n";
 
-                        string id_path_cp = parts[1];
-                        /// Send immediate acknowledgment
-                        string ackResponseCP = $"PATH_TRACKING_CP_STARTED, {id_path_cp}\n";
+                        var ids_path_cp = parts.Skip(1).ToList();
+                        /// Send immediate acknowledgment for all specified controllers
+                        string ackResponseCP = $"PATH_TRACKING_CP_STARTED, {string.Join(", ", ids_path_cp)}\n";
                         byte[] ackDataCP = Encoding.UTF8.GetBytes(ackResponseCP);
                         await stream.WriteAsync(ackDataCP, 0, ackDataCP.Length);
                         await stream.FlushAsync();
                         NotifyClientConnection($"Controller Sent: {ackResponseCP.Trim()}");
 
-                        /// Start path tracking asynchronously
+                        /// Start parallel path tracking asynchronously
                         _ = Task.Run(async () =>
                         {
                             try
                             {
-                                /// Execute path tracking
-                                string result = await PathTrackingCP(id_path_cp);
+                                /// Execute parallel path tracking
+                                await PathTrackingCP_Parallel(ids_path_cp);
 
-                                /// Check if stream is still valid before sending
-                                if (stream.CanWrite)
-                                {
-                                    byte[] resultData = Encoding.UTF8.GetBytes(result);
-                                    await stream.WriteAsync(resultData, 0, resultData.Length);
-                                    await stream.FlushAsync();
-                                    NotifyClientConnection($"Controller Sent: {result.Trim()}");
-                                }
+                                /// After all parallel tasks are complete, we could send a final confirmation.
+                                /// However, PathTrackingCP_Parallel already logs completion for each controller.
+                                /// The API specifies PATH_COMPLETED is sent per controller inside PathTrackingCP.
+                                /// If a collective notification is needed, it can be added here.
                             }
                             catch (Exception ex)
                             {
-                                if (stream.CanWrite)
-                                {
-                                    string errorResult = $"ERROR, 104, Path tracking exception: {ex.Message}\n";
-                                    byte[] errorData = Encoding.UTF8.GetBytes(errorResult);
-                                    await stream.WriteAsync(errorData, 0, errorData.Length);
-                                    await stream.FlushAsync();
-                                    NotifyClientConnection($"Controller Sent: {errorResult.Trim()}");
-                                }
+                                // This top-level catch might be useful for aggregate errors,
+                                // though individual errors are handled within PathTrackingCP.
+                                NotifyClientConnection($"[ERROR] An exception occurred during parallel CP path execution: {ex.Message}");
                             }
                         });
 
@@ -658,7 +671,7 @@ namespace MC104.server
                 if (!useMockControllers)
                 {
                     var controller = Microsupport.controllers[id];
-                    controller.SetSpeedAll(5000);
+                    controller.SetSpeedAll(500);
                 }
 
                 /// Copy trajectory data locally to avoid locking during execution
@@ -747,6 +760,17 @@ namespace MC104.server
                 {
                     return $"ERROR, 104, Not enough points for CP trajectory for {id}.\n";
                 }
+
+                // Move to the first point of the trajectory before starting CP motion.
+                var startPoint = trajectoryPoints[0];
+                NotifyClientConnection($"[CP] Moving to start point ({startPoint.X:F1}, {startPoint.Y:F1}, {startPoint.Z:F1}) for {id}...");
+                string preMoveResult = await StepAbsFromCenter(id, startPoint.X, startPoint.Y, startPoint.Z);
+                if (preMoveResult.StartsWith("ERROR"))
+                {
+                    NotifyClientConnection($"[CP] ERROR: Failed to move to start point for {id}. Aborting.");
+                    return preMoveResult;
+                }
+                NotifyClientConnection($"[CP] Now at start point for {id}.");
 
                 // 1. Configure speed and ensure axes are homed and ready.
                 controller.SetSpeedAll(BASE_SPEED_UM);
@@ -852,7 +876,7 @@ namespace MC104.server
             return true;
         }
 
-       /// <summary>
+        /// <summary>
         /// Calculates and applies speed overrides for each axis based on displacement, but only if the speed differences are significant.
         /// </summary>
         static void AdjustSpeeds(Microsupport controller, double dx, double dy, double dz)
