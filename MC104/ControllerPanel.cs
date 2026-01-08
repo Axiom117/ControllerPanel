@@ -436,7 +436,7 @@ namespace MC104
             {
                 if (Microsupport.controllers.ContainsKey(controllerId))
                 {
-                    Microsupport.controllers[controllerId].SetSpeedAll(speed);
+                    Microsupport.controllers[controllerId].SetSpeeds(speed);
                 }
             }
 
@@ -524,7 +524,7 @@ namespace MC104
             try
             {
                 /// Start with mock server if mockMode is true, otherwise start the real server
-                controllerServer = new ControllerServer(5000, mockMode: false);
+                controllerServer = new ControllerServer(5000);
                 controllerServer.OnClientConnection += LogMessage;
                 controllerServer.OnTrajectoryReceived += OnTrajectoryReceived;
 

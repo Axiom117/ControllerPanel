@@ -30,10 +30,6 @@ namespace MC104.server
         private Dictionary<string, List<TrajectoryPoint>> trajectoryData = new Dictionary<string, List<TrajectoryPoint>>();
         private Dictionary<string, bool> isPathReady = new Dictionary<string, bool>();
 
-        /// Mock mode for testing without real controllers
-        private bool useMockControllers = false;
-        private Dictionary<string, MockController> mockControllers = new Dictionary<string, MockController>();
-
         /// Configuration
         private readonly int localServerPort = 5000;
         private const double BASE_SPEED_UM = 2500;  // 2.5 mm/s
@@ -56,42 +52,13 @@ namespace MC104.server
             public int Index;
         }
 
-        /// Mock controller for testing
-        private class MockController
-        {
-            public double X { get; set; }
-            public double Y { get; set; }
-            public double Z { get; set; }
-            public string Id { get; set; }
-
-            public MockController(string id)
-            {
-                Id = id;
-                X = Y = Z = 0;
-            }
-        }
-
         #endregion
 
         #region Server Start/Stop Methods
-        public ControllerServer(int port = 5000, bool mockMode = false)
+        public ControllerServer(int port = 5000)
         {
             localServerPort = port;
             server = new TcpListener(IPAddress.Any, localServerPort);
-            useMockControllers = mockMode;
-
-            if (useMockControllers)
-            {
-                // In mock mode, we can pre-define controllers that the server will manage.
-                var mockIds = new[] { "MC1", "MC2" };
-                foreach (var id in mockIds)
-                {
-                    mockControllers[id] = new MockController(id);
-                    isPathReady[id] = false;
-                    trajectoryData[id] = new List<TrajectoryPoint>();
-                }
-                NotifyClientConnection($"Using MOCK controllers for testing: {string.Join(", ", mockIds)}");
-            }
         }
 
         /// <summary>
@@ -317,31 +284,29 @@ namespace MC104.server
                         if (parts.Length < 5 || (parts.Length - 1) % 4 != 0)
                             return "ERROR, 101, Invalid parameters for START_STEP\n";
 
-                        var moveTasks = new List<Task<string>>();
+                        var moveTasks = new List<Task>();
                         var controllerIds = new List<string>();
 
                         for (int i = 1; i < parts.Length; i += 4)
                         {
                             string id = parts[i];
+                            if (!Microsupport.controllers.ContainsKey(id))
+                                return $"ERROR, 102, Manipulator ID {id} not found\n";
+
                             double x = double.Parse(parts[i + 1]);
                             double y = double.Parse(parts[i + 2]);
                             double z = double.Parse(parts[i + 3]);
 
+                            if (Math.Abs(x) > 20000 || Math.Abs(y) > 20000 || Math.Abs(z) > 30000)
+                                return "ERROR, 101, Movement out of bounds\n";
+
                             controllerIds.Add(id);
-                            moveTasks.Add(StepAbsFromCenter(id, x, y, z));
+                            var controller = Microsupport.controllers[id];
+                            moveTasks.Add(controller.StartAbsAllFromCenterAsync(x, y, z));
                         }
 
-                        // Execute all moves in parallel
+                        // Execute all moves in parallel and wait for completion
                         await Task.WhenAll(moveTasks);
-
-                        // Check results for any errors
-                        foreach (var task in moveTasks)
-                        {
-                            if (task.Result.StartsWith("ERROR"))
-                            {
-                                return task.Result; // Return the first error found
-                            }
-                        }
 
                         return $"STEP_COMPLETED, {string.Join(", ", controllerIds)}\n";
 
@@ -454,35 +419,17 @@ namespace MC104.server
                 {
                     double x = 0, y = 0, z = 0;
 
-                    if (useMockControllers)
+                    if (Microsupport.controllers.ContainsKey(id))
                     {
-                        if (mockControllers.ContainsKey(id))
-                        {
-                            var controller = mockControllers[id];
-                            x = controller.X;
-                            y = controller.Y;
-                            z = controller.Z;
-                            NotifyClientConnection($"[MOCK] Status for {id}: X={x:F2}, Y={y:F2}, Z={z:F2}");
-                        }
-                        else
-                        {
-                            return $"ERROR, 102, Manipulator ID {id} not found\n";
-                        }
+                        var controller = Microsupport.controllers[id];
+                        var pos = await Task.Run(() => controller.GetPositionsFromCenter());
+                        x = pos[0];
+                        y = pos[1];
+                        z = pos[2];
                     }
                     else
                     {
-                        if (Microsupport.controllers.ContainsKey(id))
-                        {
-                            var controller = Microsupport.controllers[id];
-                            var pos = await Task.Run(() => controller.GetPositionsFromCenter());
-                            x = pos[0];
-                            y = pos[1];
-                            z = pos[2];
-                        }
-                        else
-                        {
-                            return $"ERROR, 102, Manipulator ID {id} not found\n";
-                        }
+                        return $"ERROR, 102, Manipulator ID {id} not found\n";
                     }
                     statusParts.Add(id);
                     statusParts.Add($"{x:F2}");
@@ -491,60 +438,6 @@ namespace MC104.server
                 }
 
                 return string.Join(", ", statusParts) + "\n";
-            }
-            catch (Exception ex)
-            {
-                return $"ERROR, 104, Motion execution failure: {ex.Message}\n";
-            }
-        }
-
-        /// <summary>
-        /// StepAbsFromCenter - Perform absolute move for a single controller
-        /// </summary>
-        private async Task<string> StepAbsFromCenter(string id, double x, double y, double z)
-        {
-            try
-            {
-                /// Validate bounds (example: XY: ±20000um, Z: ±30000um)
-                if (Math.Abs(x) > 20000 || Math.Abs(y) > 20000 || Math.Abs(z) > 30000)
-                {
-                    return "ERROR, 101, Movement out of bounds\n";
-                }
-
-                if (useMockControllers)
-                {
-                    if (mockControllers.ContainsKey(id))
-                    {
-                        var controller = mockControllers[id];
-                        controller.X = x;
-                        controller.Y = y;
-                        controller.Z = z;
-
-                        NotifyClientConnection($"[MOCK] Absolute move {id}: X={x:F2}, Y={y:F2}, Z={z:F2}.");
-
-                        /// Simulate movement time
-                        await Task.Delay(10);
-                    }
-                    else
-                    {
-                        return $"ERROR, 102, Manipulator ID {id} not found\n";
-                    }
-                }
-                else
-                {
-                    if (Microsupport.controllers.ContainsKey(id))
-                    {
-                        var controller = Microsupport.controllers[id];
-                        await controller.StartAbsAllFromCenterAsync(x, y, z);
-                    }
-                    else
-                    {
-                        return $"ERROR, 102, Manipulator ID {id} not found\n";
-                    }
-                }
-
-                /// After successful move, send completion status
-                return $"STEP_COMPLETED, {id}\n";
             }
             catch (Exception ex)
             {
@@ -667,11 +560,8 @@ namespace MC104.server
             {
                 NotifyClientConnection($"Starting path tracking for {id}...");
 
-                if (!useMockControllers)
-                {
-                    var controller = Microsupport.controllers[id];
-                    controller.SetSpeedAll(500);
-                }
+                var controller = Microsupport.controllers[id];
+                controller.SetSpeeds(2500);
 
                 /// Copy trajectory data locally to avoid locking during execution
                 List<TrajectoryPoint> pointsToExecute;
@@ -683,12 +573,7 @@ namespace MC104.server
                 foreach (var point in pointsToExecute)
                 {
                     /// Move manipulator to absolute positions from center
-                    string result = await StepAbsFromCenter(id, point.X, point.Y, point.Z);
-                    if (result.StartsWith("ERROR"))
-                    {
-                        isPathReady[id] = false;
-                        return result;
-                    }
+                    await controller.StartAbsAllFromCenterAsync(point.X, point.Y, point.Z);
 
                     /// Progress notification
                     if (point.Index % 10 == 0)
@@ -737,13 +622,6 @@ namespace MC104.server
             if (!isPathReady.ContainsKey(id) || !isPathReady[id])
                 return $"ERROR, 104, No path data ready for execution for {id}\n";
 
-            /// In mock mode, fall back to simple PTP tracking as CP logic is hardware-dependent.
-            if (useMockControllers)
-            {
-                NotifyClientConnection($"[MOCK] CP mode not supported, falling back to standard PTP for {id}.");
-                return await PathTracking(id);
-            }
-
             try
             {
                 NotifyClientConnection($"[CP] Starting High-Precision CP Motion for {id}...");
@@ -763,14 +641,7 @@ namespace MC104.server
                 /// Move to the first point of the trajectory before starting CP motion.
                 var startPoint = trajectoryPoints[0];
                 NotifyClientConnection($"[CP] Moving to start point ({startPoint.X:F1}, {startPoint.Y:F1}, {startPoint.Z:F1}) for {id}...");
-                string preMoveResult = await StepAbsFromCenter(id, startPoint.X, startPoint.Y, startPoint.Z);
-
-                /// Check for errors in pre-move
-                if (preMoveResult.StartsWith("ERROR"))
-                {
-                    NotifyClientConnection($"[CP] ERROR: Failed to move to start point for {id}. Aborting.");
-                    return preMoveResult;
-                }
+                await controller.StartAbsAllFromCenterAsync(startPoint.X, startPoint.Y, startPoint.Z);
 
                 NotifyClientConnection($"[CP] Now at start point for {id}.");
 
@@ -829,25 +700,22 @@ namespace MC104.server
         /// <summary>
         /// Executes a stored trajectory using Continuous Path (CP) motion for multiple controllers in parallel.
         /// </summary>
-        /// <summary>
-        /// Executes a stored trajectory using Continuous Path (CP) motion for multiple controllers in parallel.
-        /// </summary>
         public async Task PathTrackingCP_Parallel(List<string> ids)
         {
             var trackingTasks = new List<Task<string>>();
 
             foreach (var id in ids)
             {
-                // For each controller, create a new task to run its path tracking logic.
-                // This ensures each controller's logic runs on a separate thread from the thread pool,
-                // allowing true parallel execution.
+                /// For each controller, create a new task to run its path tracking logic.
+                /// This ensures each controller's logic runs on a separate thread from the thread pool,
+                /// allowing true parallel execution.
                 trackingTasks.Add(Task.Run(() => PathTrackingCP(id)));
             }
 
-            // Wait for all path tracking tasks to complete.
+            /// Wait for all path tracking tasks to complete.
             var results = await Task.WhenAll(trackingTasks);
 
-            // Log the results for each controller.
+            /// Log the results for each controller.
             for (int i = 0; i < ids.Count; i++)
             {
                 NotifyClientConnection($"Parallel execution result for {ids[i]}: {results[i].Trim()}");
@@ -879,47 +747,6 @@ namespace MC104.server
         }
 
         /// <summary>
-        /// Calculates and applies speed overrides for each axis based on displacement, but only if the speed differences are significant.
-        /// </summary>
-        static void AdjustSpeeds(Microsupport controller, double dx, double dy, double dz)
-        {
-            const double MIN_SPEED_UM = 50.0;
-            const double SPEED_CHANGE_THRESHOLD = 0.01; // 10%
-
-            double maxDisplacement = Math.Max(Math.Abs(dx), Math.Max(Math.Abs(dy), Math.Abs(dz)));
-            if (maxDisplacement < 1e-6) return; // No movement
-
-            /// Calculate new target speeds
-            double targetSpeedX = BASE_SPEED_UM * (Math.Abs(dx) / maxDisplacement);
-            double targetSpeedY = BASE_SPEED_UM * (Math.Abs(dy) / maxDisplacement);
-            double targetSpeedZ = BASE_SPEED_UM * (Math.Abs(dz) / maxDisplacement);
-
-            /// Get current speeds from the controller
-            double currentSpeedX = controller.GetSpeed(Microsupport.AXIS.X);
-            double currentSpeedY = controller.GetSpeed(Microsupport.AXIS.Y);
-            double currentSpeedZ = controller.GetSpeed(Microsupport.AXIS.Z);
-
-            Console.WriteLine($"[CP] Current Speeds: X={currentSpeedX:F0}, Y={currentSpeedY:F0}, Z={currentSpeedZ:F0} um/s");
-
-            /// Check each axis individually
-            bool needsUpdateX = Math.Abs(targetSpeedX - currentSpeedX) > currentSpeedX * SPEED_CHANGE_THRESHOLD;
-            bool needsUpdateY = Math.Abs(targetSpeedY - currentSpeedY) > currentSpeedY * SPEED_CHANGE_THRESHOLD;
-            bool needsUpdateZ = Math.Abs(targetSpeedZ - currentSpeedZ) > currentSpeedZ * SPEED_CHANGE_THRESHOLD;
-
-            if (needsUpdateX || needsUpdateY || needsUpdateZ)
-            {
-                Console.WriteLine($"[CP] Speeds adjusted for next segment: X={targetSpeedX:F0}, Y={targetSpeedY:F0}, Z={targetSpeedZ:F0} um/s");
-                if (Math.Abs(dx) > 1e-6) controller.SpeedOverride(Microsupport.AXIS.X, (uint)Math.Max(targetSpeedX, MIN_SPEED_UM));
-                if (Math.Abs(dy) > 1e-6) controller.SpeedOverride(Microsupport.AXIS.Y, (uint)Math.Max(targetSpeedY, MIN_SPEED_UM));
-                if (Math.Abs(dz) > 1e-6) controller.SpeedOverride(Microsupport.AXIS.Z, (uint)Math.Max(targetSpeedZ, MIN_SPEED_UM));
-            }
-            else
-            {
-                Console.WriteLine($"[CP] Speed differences are within {SPEED_CHANGE_THRESHOLD:P0}, skipping override.");
-            }
-        }
-
-        /// <summary>
         /// Starts a synchronized movement for all axes.
         /// </summary>
         private async Task StartSegmentSync(Microsupport controller, TrajectoryPoint start, TrajectoryPoint end)
@@ -928,8 +755,6 @@ namespace MC104.server
             double dy = end.Y - start.Y;
             double dz = end.Z - start.Z;
 
-            AdjustSpeeds(controller, dx, dy, dz);
-
             /// Determine directions based on displacement signs
             var xDir = dx >= 0 ? Microsupport.DIRECTION.FORWARD : Microsupport.DIRECTION.REVERSE;
             var yDir = dy >= 0 ? Microsupport.DIRECTION.FORWARD : Microsupport.DIRECTION.REVERSE;
@@ -937,7 +762,7 @@ namespace MC104.server
 
             controller.StartIncAll(xDir, Math.Abs(dx),
                                    yDir, Math.Abs(dy),
-                                   zDir, Math.Abs(dz));
+                                   zDir, Math.Abs(dz), BASE_SPEED_UM);
 
             await Task.Delay(1);
         }
@@ -985,6 +810,7 @@ namespace MC104.server
 
                 double averageProgress = (movingAxesCount > 0) ? totalProgress / movingAxesCount : 1.0;
 
+                /// Check if the override progress threshold is reached
                 if (averageProgress >= OVERRIDE_PROGRESS_PERCENT)
                 {
                     string progressLog = $"X: {progressX:P0}, Y: {progressY:P0}, Z: {progressZ:P0}, Avg: {averageProgress:P0}";
@@ -994,8 +820,10 @@ namespace MC104.server
                     double next_dy = nextTarget.Y - currentTarget.Y;
                     double next_dz = nextTarget.Z - currentTarget.Z;
 
-                    AdjustSpeeds(controller, next_dx, next_dy, next_dz);
+                    /// Adjust speeds for the next target point before issuing override.
+                    controller.AdjustSpeeds(next_dx, next_dy, next_dz, BASE_SPEED_UM);
 
+                    /// Issue IndexOverride for each axis as needed.
                     if (Math.Abs(next_dx) > 0.001) controller.IndexOverride(Microsupport.AXIS.X, pulseX);
                     if (Math.Abs(next_dy) > 0.001) controller.IndexOverride(Microsupport.AXIS.Y, pulseY);
                     if (Math.Abs(next_dz) > 0.001) controller.IndexOverride(Microsupport.AXIS.Z, pulseZ);
@@ -1003,13 +831,13 @@ namespace MC104.server
                     return true;
                 }
 
-                // Reduce log frequency to avoid spamming
+                /// Reduce log frequency to avoid spamming
                 if (safetyTimer.ElapsedMilliseconds % 100 < 10) // Log roughly every 100ms
                 {
                     NotifyClientConnection($"[CP] Waiting for Override. Pos:({currentPos[0]:F1}, {currentPos[1]:F1}, {currentPos[2]:F1}). Progress: X:{progressX:P0}, Y:{progressY:P0}, Z:{progressZ:P0}, Avg:{averageProgress:P0}");
                 }
 
-
+                /// Brief pause to prevent CPU overload
                 Thread.SpinWait(1);
             }
 
@@ -1019,9 +847,7 @@ namespace MC104.server
 
         #endregion
 
-
-
-        #region Helper Methods
+        #region Server Helper Methods
         private void NotifyClientConnection(string message)
         {
             string timestampedMessage = $"[{DateTime.Now:HH:mm:ss}] {message}";
