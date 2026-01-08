@@ -123,9 +123,6 @@ namespace MicrosupportController
 
         private string comment = "";
 
-        private int accelerationTimeMs = 100; // Acceleration time in milliseconds for each axis.
-        private bool isSmoothingEnabled = false; // Flag to enable or disable smoothing.
-
         #endregion
 
         #region Class constructors and utilities
@@ -502,15 +499,18 @@ namespace MicrosupportController
                 speedData.dwHighSpeed = (uint)Math.Abs(speed / irange);
 
                 /// dwLowSpeed: min target speed (in PPS)
-                uint lowSpeedData = (uint)(speedData.dwHighSpeed * 0.20); // 20% of max speed
-                speedData.dwLowSpeed = lowSpeedData;
-                //  speedData.dwLowSpeed = (uint)Math.Abs(1000 / irange);
+                speedData.dwLowSpeed = (uint)(speedData.dwHighSpeed * 0.10); // 20% of max speedd
 
                 /// Safety check: ensures that the max speed is not lower than the min speed.
                 if (speedData.dwHighSpeed < speedData.dwLowSpeed)
                     speedData.dwHighSpeed = speedData.dwLowSpeed;
 
-                speedData.dwRate = new uint[] { 10, 8191, 8191 }; // Acceleration rate for each segment of motion (multi-stage ramp-up).
+                uint baseRate = 10; // Base rate for acceleration calculation.
+                uint dynamicRate = (uint)(baseRate / (speed / (double)MAX_SPEED)); // Dynamic rate based on desired speed.
+
+                if (dynamicRate < baseRate) dynamicRate = 10;
+
+                speedData.dwRate = new uint[] { dynamicRate, 8191, 8191 }; // Acceleration rate for each segment of motion (multi-stage ramp-up).
                 speedData.dwRateChgPnt = new uint[] { 8191, 8191 }; // Points where the rate changes. Use 8191 means a simple trapezoidal drive.
 
                 /// Compute S-curve weighting factor based on speed difference.
