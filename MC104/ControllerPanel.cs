@@ -896,18 +896,21 @@ namespace MC104
                 return;
             }
 
+            /// Get speed from the track bar
+            double speed = GetSpeed();
+
             /// Check which motion mode is selected
             if (cpModeButton.Checked)
             {
-                LogMessage("Starting Path Tracking in CP (Continuous Path) mode...");
+                LogMessage($"Starting Path Tracking in CP (Continuous Path) mode at {speed} um/s...");
                 /// Start path tracking on the selected controllers in parallel CP mode.
-                _ = controllerServer.PathTrackingCP_Parallel(selectedControllers);
+                _ = controllerServer.PathTrackingCP_Parallel(selectedControllers, speed);
             }
             else if (ptpModeButton.Checked)
             {
-                LogMessage("Starting Path Tracking in PTP (Point-to-Point) mode...");
+                LogMessage($"Starting Path Tracking in PTP (Point-to-Point) mode at {speed} um/s...");
                 /// Start path tracking on the selected controllers in parallel PTP mode.
-                _ = controllerServer.PathTracking_Parallel(selectedControllers);
+                _ = controllerServer.PathTracking_Parallel(selectedControllers, speed);
             }
             else
             {

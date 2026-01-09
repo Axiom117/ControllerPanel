@@ -32,8 +32,8 @@ namespace MC104.server
 
         /// Configuration
         private readonly int localServerPort = 5000;
-        private const double BASE_SPEED_UM = 2500;  // 2.5 mm/s
-        private const double OVERRIDE_PROGRESS_PERCENT = 0.90; // 90%
+        private const double BASE_SPEED_UM = 2000;  // 2 mm/s
+        private const double OVERRIDE_PROGRESS_PERCENT = 0.80; // 80%
 
         /// Active client connections
         private List<TcpClient> activeClients = new List<TcpClient>();
@@ -333,7 +333,7 @@ namespace MC104.server
                             try
                             {
                                 /// Execute path tracking
-                                string result = await PathTracking(id_path);
+                                string result = await PathTracking(id_path, BASE_SPEED_UM);
 
                                 /// Check if stream is still valid before sending
                                 if (stream.CanWrite)
@@ -377,7 +377,7 @@ namespace MC104.server
                             try
                             {
                                 /// Execute parallel path tracking
-                                await PathTrackingCP_Parallel(ids_path_cp);
+                                await PathTrackingCP_Parallel(ids_path_cp, BASE_SPEED_UM);
 
                                 /// After all parallel tasks are complete, we could send a final confirmation.
                                 /// However, PathTrackingCP_Parallel already logs completion for each controller.
@@ -551,7 +551,7 @@ namespace MC104.server
         /// <summary>
         /// PathTracking - Execute stored trajectory for a single controller
         /// </summary>
-        public async Task<string> PathTracking(string id)
+        public async Task<string> PathTracking(string id, double speed)
         {
             if (!isPathReady.ContainsKey(id) || !isPathReady[id])
                 return $"ERROR, 104, No path data ready for execution for {id}\n";
@@ -561,7 +561,7 @@ namespace MC104.server
                 NotifyClientConnection($"Starting path tracking for {id}...");
 
                 var controller = Microsupport.controllers[id];
-                controller.SetSpeeds(2500);
+                controller.SetSpeeds(speed);
 
                 /// Copy trajectory data locally to avoid locking during execution
                 List<TrajectoryPoint> pointsToExecute;
@@ -595,13 +595,13 @@ namespace MC104.server
         /// <summary>
         /// Executes a stored trajectory using Point-to-Point (PTP) motion for multiple controllers in parallel.
         /// </summary>
-        public async Task PathTracking_Parallel(List<string> ids)
+        public async Task PathTracking_Parallel(List<string> ids, double speed)
         {
             var trackingTasks = new List<Task<string>>();
 
             foreach (var id in ids)
             {
-                trackingTasks.Add(Task.Run(() => PathTracking(id)));
+                trackingTasks.Add(Task.Run(() => PathTracking(id, speed)));
             }
 
             // Wait for all path tracking tasks to complete.
@@ -617,7 +617,7 @@ namespace MC104.server
         /// <summary>
         /// Executes a high-precision continuous path (CP) motion for the specified controller identifier.
         /// </summary>
-        public async Task<string> PathTrackingCP(string id)
+        public async Task<string> PathTrackingCP(string id, double speed)
         {
             if (!isPathReady.ContainsKey(id) || !isPathReady[id])
                 return $"ERROR, 104, No path data ready for execution for {id}\n";
@@ -650,7 +650,7 @@ namespace MC104.server
 
                 /// Start the initial segment (P0 -> P1).
                 NotifyClientConnection($"[CP] Starting initial segment (Point 0 -> Point 1) for {id}...");
-                await StartSegmentSync(controller, trajectoryPoints[0], trajectoryPoints[1]);
+                await StartSegmentSync(controller, trajectoryPoints[0], trajectoryPoints[1], speed);
 
                 /// Iterate through subsequent segments.
                 for (int i = 1; i < trajectoryPoints.Count - 1; i++)
@@ -663,13 +663,13 @@ namespace MC104.server
 
                     if (isContinuous)
                     {
-                        bool overrideSuccess = await WaitForOverrideWindowAndExecute(controller, prevTarget, currentTarget, nextTarget, chainStartPoint);
+                        bool overrideSuccess = await WaitForOverrideWindowAndExecute(controller, prevTarget, currentTarget, nextTarget, chainStartPoint, speed);
                         if (!overrideSuccess)
                         {
                             NotifyClientConnection($"[CP] WARNING: Missed override window at Point {i} for {id}. Resyncing...");
                             await controller.Wait();
                             chainStartPoint = currentTarget;
-                            await StartSegmentSync(controller, currentTarget, nextTarget);
+                            await StartSegmentSync(controller, currentTarget, nextTarget, speed);
                         }
                     }
                     else
@@ -677,7 +677,7 @@ namespace MC104.server
                         NotifyClientConnection($"[CP] Segment {i}->{i + 1}: Discontinuous. Stopping at Point {i} for {id}.");
                         await controller.Wait();
                         chainStartPoint = currentTarget;
-                        await StartSegmentSync(controller, currentTarget, nextTarget);
+                        await StartSegmentSync(controller, currentTarget, nextTarget, speed);
                     }
                 }
 
@@ -700,7 +700,7 @@ namespace MC104.server
         /// <summary>
         /// Executes a stored trajectory using Continuous Path (CP) motion for multiple controllers in parallel.
         /// </summary>
-        public async Task PathTrackingCP_Parallel(List<string> ids)
+        public async Task PathTrackingCP_Parallel(List<string> ids, double speed)
         {
             var trackingTasks = new List<Task<string>>();
 
@@ -709,7 +709,7 @@ namespace MC104.server
                 /// For each controller, create a new task to run its path tracking logic.
                 /// This ensures each controller's logic runs on a separate thread from the thread pool,
                 /// allowing true parallel execution.
-                trackingTasks.Add(Task.Run(() => PathTrackingCP(id)));
+                trackingTasks.Add(Task.Run(() => PathTrackingCP(id, speed)));
             }
 
             /// Wait for all path tracking tasks to complete.
@@ -749,7 +749,7 @@ namespace MC104.server
         /// <summary>
         /// Starts a synchronized movement for all axes.
         /// </summary>
-        private async Task StartSegmentSync(Microsupport controller, TrajectoryPoint start, TrajectoryPoint end)
+        private async Task StartSegmentSync(Microsupport controller, TrajectoryPoint start, TrajectoryPoint end, double speed)
         {
             double dx = end.X - start.X;
             double dy = end.Y - start.Y;
@@ -762,7 +762,7 @@ namespace MC104.server
 
             controller.StartIncAll(xDir, Math.Abs(dx),
                                    yDir, Math.Abs(dy),
-                                   zDir, Math.Abs(dz), BASE_SPEED_UM);
+                                   zDir, Math.Abs(dz), speed);
 
             await Task.Delay(1);
         }
@@ -770,7 +770,7 @@ namespace MC104.server
         /// <summary>
         /// High-frequency polling loop to trigger IndexOverride.
         /// </summary>
-        private async Task<bool> WaitForOverrideWindowAndExecute(Microsupport controller, TrajectoryPoint prevTarget, TrajectoryPoint currentTarget, TrajectoryPoint nextTarget, TrajectoryPoint chainStart)
+        private async Task<bool> WaitForOverrideWindowAndExecute(Microsupport controller, TrajectoryPoint prevTarget, TrajectoryPoint currentTarget, TrajectoryPoint nextTarget, TrajectoryPoint chainStart, double speed)
         {
             Stopwatch safetyTimer = Stopwatch.StartNew();
             long timeoutLimit = 2000; // 2 seconds safety limit
@@ -821,7 +821,7 @@ namespace MC104.server
                     double next_dz = nextTarget.Z - currentTarget.Z;
 
                     /// Adjust speeds for the next target point before issuing override.
-                    controller.AdjustSpeeds(next_dx, next_dy, next_dz, BASE_SPEED_UM);
+                    controller.AdjustSpeeds(next_dx, next_dy, next_dz, speed);
 
                     /// Issue IndexOverride for each axis as needed.
                     if (Math.Abs(next_dx) > 0.001) controller.IndexOverride(Microsupport.AXIS.X, pulseX);
@@ -838,7 +838,7 @@ namespace MC104.server
                 }
 
                 /// Brief pause to prevent CPU overload
-                Thread.SpinWait(1);
+                await Task.Delay(1);
             }
 
             return false; // Controller stopped before threshold was reached
