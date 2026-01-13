@@ -48,7 +48,7 @@ namespace MC104.server
         /// TrajectoryPoint structure
         public struct TrajectoryPoint
         {
-            public double X, Y, Z;
+            public double X, Y, Z, Speed;
             public int Index;
         }
 
@@ -509,12 +509,15 @@ namespace MC104.server
                                      .ToArray();
 
             /// Validate at least trajectory data are present
-            if (values.Length < 3)
-                throw new FormatException("PATH_DATA must include at least one trajectory point (3 values).");
+            if (values.Length < 3) // At least one point (X,Y,Z)
+                throw new FormatException("PATH_DATA must include at least one trajectory point.");
 
-            /// Validate: must be groups of 3 floats
-            if (values.Length % 3 != 0)
-                throw new FormatException("Trajectory data must contain groups of 3 values.");
+            /// Data can be in groups of 3 (X,Y,Z) or 4 (X,Y,Z,Speed)
+            if (values.Length % 3 != 0 && values.Length % 4 != 0)
+                throw new FormatException("Trajectory data must contain groups of 3 or 4 values.");
+
+            bool hasSpeedData = values.Length % 4 == 0;
+            int pointValueCount = hasSpeedData ? 4 : 3;
 
             /// Parse trajectory points, use lockObject for thread safety
             lock (lockObject)
@@ -525,16 +528,17 @@ namespace MC104.server
                 }
                 trajectoryData[controllerId].Clear();
 
-                int numPoints = values.Length / 3;
+                int numPoints = values.Length / pointValueCount;
 
                 for (int i = 0; i < numPoints; i++)
                 {
-                    int idx = i * 3;
+                    int idx = i * pointValueCount;
                     TrajectoryPoint point = new TrajectoryPoint
                     {
                         X = double.Parse(values[idx]),
                         Y = double.Parse(values[idx + 1]),
                         Z = double.Parse(values[idx + 2]),
+                        Speed = hasSpeedData ? double.Parse(values[idx + 3]) : BASE_SPEED_UM,
                         Index = i
                     };
                     trajectoryData[controllerId].Add(point);
@@ -561,7 +565,6 @@ namespace MC104.server
                 NotifyClientConnection($"Starting path tracking for {id}...");
 
                 var controller = Microsupport.controllers[id];
-                controller.SetSpeeds(speed);
 
                 /// Copy trajectory data locally to avoid locking during execution
                 List<TrajectoryPoint> pointsToExecute;
@@ -570,8 +573,17 @@ namespace MC104.server
                     pointsToExecute = new List<TrajectoryPoint>(trajectoryData[id]);
                 }
 
-                foreach (var point in pointsToExecute)
+                // The first point is the starting position, no movement yet.
+                // Movement starts from the second point in the list.
+                for (int i = 1; i < pointsToExecute.Count; i++)
                 {
+                    var point = pointsToExecute[i];
+
+                    // Use the speed specified for the target point.
+                    // This speed is for the segment from point (i-1) to point i.
+                    double segmentSpeed = point.Speed > 0 ? point.Speed : speed;
+                    controller.SetSpeeds(segmentSpeed);
+
                     /// Move manipulator to absolute positions from center
                     await controller.StartAbsAllFromCenterAsync(point.X, point.Y, point.Z);
 
@@ -640,17 +652,16 @@ namespace MC104.server
 
                 /// Move to the first point of the trajectory before starting CP motion.
                 var startPoint = trajectoryPoints[0];
-                NotifyClientConnection($"[CP] Moving to start point ({startPoint.X:F1}, {startPoint.Y:F1}, {startPoint.Z:F1}) for {id}...");
+                NotifyClientConnection($"[Controller {id}] Moving to start point ({startPoint.X:F1}, {startPoint.Y:F1}, {startPoint.Z:F1})...");
                 await controller.StartAbsAllFromCenterAsync(startPoint.X, startPoint.Y, startPoint.Z);
-
-                NotifyClientConnection($"[CP] Now at start point for {id}.");
 
                 /// 'chainStartPoint' acts as the reference origin for the current continuous move chain.
                 TrajectoryPoint chainStartPoint = trajectoryPoints[0];
 
                 /// Start the initial segment (P0 -> P1).
-                NotifyClientConnection($"[CP] Starting initial segment (Point 0 -> Point 1) for {id}...");
-                await StartSegmentSync(controller, trajectoryPoints[0], trajectoryPoints[1], speed);
+                NotifyClientConnection($"[Controller {id}] Starting initial segment (Point 0 -> Point 1)...");
+                double initialSpeed = trajectoryPoints[1].Speed > 0 ? trajectoryPoints[1].Speed : speed;
+                await StartSegmentSync(controller, trajectoryPoints[0], trajectoryPoints[1], initialSpeed);
 
                 /// Iterate through subsequent segments.
                 for (int i = 1; i < trajectoryPoints.Count - 1; i++)
@@ -658,26 +669,27 @@ namespace MC104.server
                     var currentTarget = trajectoryPoints[i];
                     var nextTarget = trajectoryPoints[i + 1];
                     var prevTarget = trajectoryPoints[i - 1];
+                    double segmentSpeed = nextTarget.Speed > 0 ? nextTarget.Speed : speed;
 
                     bool isContinuous = CheckContinuity(prevTarget, currentTarget, nextTarget);
 
                     if (isContinuous)
                     {
-                        bool overrideSuccess = await WaitForOverrideWindowAndExecute(controller, prevTarget, currentTarget, nextTarget, chainStartPoint, speed);
+                        bool overrideSuccess = await WaitForOverrideWindowAndExecute(id, controller, prevTarget, currentTarget, nextTarget, chainStartPoint, segmentSpeed);
                         if (!overrideSuccess)
                         {
-                            NotifyClientConnection($"[CP] WARNING: Missed override window at Point {i} for {id}. Resyncing...");
+                            NotifyClientConnection($"[Controller {id}] WARNING: Missed override window at Point {i} for {id}. Resyncing...");
                             await controller.Wait();
                             chainStartPoint = currentTarget;
-                            await StartSegmentSync(controller, currentTarget, nextTarget, speed);
+                            await StartSegmentSync(controller, currentTarget, nextTarget, segmentSpeed);
                         }
                     }
                     else
                     {
-                        NotifyClientConnection($"[CP] Segment {i}->{i + 1}: Discontinuous. Stopping at Point {i} for {id}.");
+                        NotifyClientConnection($"[Controller {id}] Segment {i}->{i + 1}: Discontinuous. Stopping at Point {i}.");
                         await controller.Wait();
                         chainStartPoint = currentTarget;
-                        await StartSegmentSync(controller, currentTarget, nextTarget, speed);
+                        await StartSegmentSync(controller, currentTarget, nextTarget, segmentSpeed);
                     }
                 }
 
@@ -685,7 +697,7 @@ namespace MC104.server
                 await controller.Wait();
 
                 double[] finalPos = controller.GetPositionsFromCenter();
-                NotifyClientConnection($"[CP] Motion Complete for {id}. Final Pos: ({finalPos[0]:F1}, {finalPos[1]:F1}, {finalPos[2]:F1}).");
+                NotifyClientConnection($"[Controller {id}] Motion Complete. Final Pos: ({finalPos[0]:F1}, {finalPos[1]:F1}, {finalPos[2]:F1}).");
 
                 isPathReady[id] = false; // Path consumed
                 return $"PATH_COMPLETED, {id}\n";
@@ -770,7 +782,7 @@ namespace MC104.server
         /// <summary>
         /// High-frequency polling loop to trigger IndexOverride.
         /// </summary>
-        private async Task<bool> WaitForOverrideWindowAndExecute(Microsupport controller, TrajectoryPoint prevTarget, TrajectoryPoint currentTarget, TrajectoryPoint nextTarget, TrajectoryPoint chainStart, double speed)
+        private async Task<bool> WaitForOverrideWindowAndExecute(string id, Microsupport controller, TrajectoryPoint prevTarget, TrajectoryPoint currentTarget, TrajectoryPoint nextTarget, TrajectoryPoint chainStart, double speed)
         {
             Stopwatch safetyTimer = Stopwatch.StartNew();
             long timeoutLimit = 2000; // 2 seconds safety limit
@@ -814,7 +826,7 @@ namespace MC104.server
                 if (averageProgress >= OVERRIDE_PROGRESS_PERCENT)
                 {
                     string progressLog = $"X: {progressX:P0}, Y: {progressY:P0}, Z: {progressZ:P0}, Avg: {averageProgress:P0}";
-                    NotifyClientConnection($"[CP] Override Window Reached ({progressLog}). Executing Override to ({nextTarget.X:F1}, {nextTarget.Y:F1}, {nextTarget.Z:F1})");
+                    NotifyClientConnection($"[Controller {id}] Override Window Reached ({progressLog}). Executing Override to ({nextTarget.X:F1}, {nextTarget.Y:F1}, {nextTarget.Z:F1})");
 
                     double next_dx = nextTarget.X - currentTarget.X;
                     double next_dy = nextTarget.Y - currentTarget.Y;
@@ -834,7 +846,7 @@ namespace MC104.server
                 /// Reduce log frequency to avoid spamming
                 if (safetyTimer.ElapsedMilliseconds % 100 < 10) // Log roughly every 100ms
                 {
-                    NotifyClientConnection($"[CP] Waiting for Override. Pos:({currentPos[0]:F1}, {currentPos[1]:F1}, {currentPos[2]:F1}). Progress: X:{progressX:P0}, Y:{progressY:P0}, Z:{progressZ:P0}, Avg:{averageProgress:P0}");
+                    NotifyClientConnection($"[Controller {id}] Waiting for Override. Pos:({currentPos[0]:F1}, {currentPos[1]:F1}, {currentPos[2]:F1}). Progress: X:{progressX:P0}, Y:{progressY:P0}, Z:{progressZ:P0}, Avg:{averageProgress:P0}");
                 }
 
                 /// Brief pause to prevent CPU overload
