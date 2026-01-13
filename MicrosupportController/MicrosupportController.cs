@@ -622,28 +622,21 @@ namespace MicrosupportController
         }
 
         /// <summary>
-        /// Calculates and applies speed overrides for each axis based on displacement to ensure synchronized movement.
+        /// Calculates and applies speed overrides for each axis based on displacement to ensure synchronized movement over a given duration.
         /// </summary>
-        public void AdjustSpeeds(double dx, double dy, double dz, double baseSpeedUm)
+        public void AdjustSpeeds(double dx, double dy, double dz, double duration)
         {
             const double MIN_SPEED_UM = 50.0;
 
-            /// Determine the maximum displacement among the three axes.
-            double maxDisplacement = Math.Max(Math.Abs(dx), Math.Max(Math.Abs(dy), Math.Abs(dz)));
-            if (maxDisplacement < 1e-6) return; // No movement
+            if (duration <= 0) return; // Avoid division by zero
 
-            /// Calculate new target speeds
-            double targetSpeedX = baseSpeedUm * (Math.Abs(dx) / maxDisplacement);
-            double targetSpeedY = baseSpeedUm * (Math.Abs(dy) / maxDisplacement);
-            double targetSpeedZ = baseSpeedUm * (Math.Abs(dz) / maxDisplacement);
-
-            /// Get current speeds from the controller
-            double currentSpeedX = this.GetSpeed(Microsupport.AXIS.X);
-            double currentSpeedY = this.GetSpeed(Microsupport.AXIS.Y);
-            double currentSpeedZ = this.GetSpeed(Microsupport.AXIS.Z);
+            /// Calculate required speed for each axis (Speed = Distance / Time)
+            double targetSpeedX = Math.Abs(dx) / duration;
+            double targetSpeedY = Math.Abs(dy) / duration;
+            double targetSpeedZ = Math.Abs(dz) / duration;
 
             /// Apply speed overrides to each axis
-            Console.WriteLine($"[CP] Speeds adjusted for next segment: X={targetSpeedX:F0}, Y={targetSpeedY:F0}, Z={targetSpeedZ:F0} um/s");
+            Console.WriteLine($"[CP] Speeds adjusted for next segment: X={targetSpeedX:F0}, Y={targetSpeedY:F0}, Z={targetSpeedZ:F0} um/s for {duration:F2}s");
             if (Math.Abs(dx) > 1e-6) this.SpeedOverride(Microsupport.AXIS.X, (uint)Math.Max(targetSpeedX, MIN_SPEED_UM));
             if (Math.Abs(dy) > 1e-6) this.SpeedOverride(Microsupport.AXIS.Y, (uint)Math.Max(targetSpeedY, MIN_SPEED_UM));
             if (Math.Abs(dz) > 1e-6) this.SpeedOverride(Microsupport.AXIS.Z, (uint)Math.Max(targetSpeedZ, MIN_SPEED_UM));
@@ -789,17 +782,20 @@ namespace MicrosupportController
         }
 
         /// <summary>
-        /// Starts incremental movement on all three axes (X, Y, and Z) with the specified directions and distances.
-        /// This method adjusts the speed of each axis to ensure they all complete their movement at the same time.
+        /// Starts incremental movement on all three axes (X, Y, and Z) with the specified directions and distances, synchronized to complete in a given duration.
         /// </summary>
         public uint StartIncAll(DIRECTION xDir, double xUm,
                                     DIRECTION yDir, double yUm,
-                                    DIRECTION zDir, double zUm, double baseSpeedUm)
+                                    DIRECTION zDir, double zUm, double duration)
         {
             if (!this.IsValid) return Hpmcstd.MCSD_ERROR_NO_DEVICE;
 
-            /// Adjust speeds for synchronized movement
-            AdjustSpeeds(xUm, yUm, zUm, baseSpeedUm);
+            /// Determine the maximum displacement among the three axes.
+            double maxDisplacement = Math.Max(Math.Abs(xUm), Math.Max(Math.Abs(yUm), Math.Abs(zUm)));
+            if (maxDisplacement < 1e-6) return Hpmcstd.MCSD_ERROR_SUCCESS; // No movement
+
+            /// Adjust speeds for synchronized movement over the specified duration
+            AdjustSpeeds(xUm, yUm, zUm, duration);
 
             /// Start movement for all axes
             uint resX = StartInc(AXIS.X, xDir, xUm);
@@ -999,6 +995,7 @@ namespace MicrosupportController
         /// engaged in an operation. The result is based on the status flags for the controller.</remarks>
         /// <param name="axis">The axis to check. Must be one of the defined <see cref="AXIS"/> values.</param>
         /// <returns><see langword="true"/> if the specified axis is busy; otherwise, <see langword="false"/>.</returns>
+
         public bool IsBusy(AXIS axis)
         {
             ushort status;

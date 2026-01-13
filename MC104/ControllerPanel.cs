@@ -53,6 +53,7 @@ namespace MC104
         private const double RANGE_X = 20000; // Motion range of X axis (um)
         private const double RANGE_Y = 20000; // Motion range of Y axis (um)
         private const double RANGE_Z = 30000; // Motion range of Z axis (um)
+        private const double DURATION = 0.2;   // Duration for each movement segment (s)
 
         #endregion
 
@@ -904,7 +905,7 @@ namespace MC104
             {
                 LogMessage($"Starting Path Tracking in CP (Continuous Path) mode at {speed} um/s...");
                 /// Start path tracking on the selected controllers in parallel CP mode.
-                _ = controllerServer.PathTrackingCP_Parallel(selectedControllers, speed);
+                _ = controllerServer.PathTrackingCP_Parallel(selectedControllers, DURATION);
             }
             else if (ptpModeButton.Checked)
             {
