@@ -33,8 +33,8 @@ namespace MC104.server
         /// Configuration
         private readonly int localServerPort = 5000;
         private const double BASE_SPEED_UM = 2000;  // 2 mm/s
-        private const double OVERRIDE_PROGRESS_PERCENT = 0.80; // 80%
-        private const double DURATION = 0.2; // 50 ms
+        private const double OVERRIDE_PROGRESS_PERCENT = 0.85; // 85%
+        private const double DURATION = 0.2; // 200 ms
 
         /// Active client connections
         private List<TcpClient> activeClients = new List<TcpClient>();
@@ -334,7 +334,7 @@ namespace MC104.server
                             try
                             {
                                 /// Execute path tracking
-                                string result = await PathTracking(id_path, BASE_SPEED_UM);
+                                string result = await PathTracking(id_path, DURATION);
 
                                 /// Check if stream is still valid before sending
                                 if (stream.CanWrite)
@@ -513,12 +513,11 @@ namespace MC104.server
             if (values.Length < 3) // At least one point (X,Y,Z)
                 throw new FormatException("PATH_DATA must include at least one trajectory point.");
 
-            /// Data can be in groups of 3 (X,Y,Z) or 4 (X,Y,Z,Speed)
-            if (values.Length % 3 != 0 && values.Length % 4 != 0)
-                throw new FormatException("Trajectory data must contain groups of 3 or 4 values.");
+            /// Data must be in groups of 3 (X,Y,Z)
+            if (values.Length % 3 != 0)
+                throw new FormatException("Trajectory data must contain groups of 3 values (X, Y, Z).");
 
-            bool hasSpeedData = values.Length % 4 == 0;
-            int pointValueCount = hasSpeedData ? 4 : 3;
+            const int pointValueCount = 3;
 
             /// Parse trajectory points, use lockObject for thread safety
             lock (lockObject)
@@ -539,7 +538,7 @@ namespace MC104.server
                         X = double.Parse(values[idx]),
                         Y = double.Parse(values[idx + 1]),
                         Z = double.Parse(values[idx + 2]),
-                        Speed = hasSpeedData ? double.Parse(values[idx + 3]) : BASE_SPEED_UM,
+                        Speed = BASE_SPEED_UM, // Always use the base speed
                         Index = i
                     };
                     trajectoryData[controllerId].Add(point);
@@ -554,9 +553,9 @@ namespace MC104.server
         }
 
         /// <summary>
-        /// PathTracking - Execute stored trajectory for a single controller
+        /// PathTracking - Execute stored trajectory for a single controller using duration-based segments.
         /// </summary>
-        public async Task<string> PathTracking(string id, double speed)
+        public async Task<string> PathTracking(string id, double duration)
         {
             if (!isPathReady.ContainsKey(id) || !isPathReady[id])
                 return $"ERROR, 104, No path data ready for execution for {id}\n";
@@ -574,23 +573,30 @@ namespace MC104.server
                     pointsToExecute = new List<TrajectoryPoint>(trajectoryData[id]);
                 }
 
-                // The first point is the starting position, no movement yet.
-                // Movement starts from the second point in the list.
-                for (int i = 1; i < pointsToExecute.Count; i++)
+                if (pointsToExecute.Count < 2)
                 {
-                    var point = pointsToExecute[i];
+                    NotifyClientConnection($"Path for {id} has less than 2 points. Nothing to execute.");
+                    return $"PATH_COMPLETED, {id}\n";
+                }
 
-                    // Use the speed specified for the target point.
-                    // This speed is for the segment from point (i-1) to point i.
-                    double segmentSpeed = point.Speed > 0 ? point.Speed : speed;
-                    controller.SetSpeeds(segmentSpeed);
+                // Move to the start point before beginning segmented moves
+                var startPoint = pointsToExecute[0];
+                NotifyClientConnection($"[Controller {id}] Moving to start point ({startPoint.X:F1}, {startPoint.Y:F1}, {startPoint.Z:F1})...");
+                await controller.StartAbsAllFromCenterAsync(startPoint.X, startPoint.Y, startPoint.Z);
 
-                    /// Move manipulator to absolute positions from center
-                    await controller.StartAbsAllFromCenterAsync(point.X, point.Y, point.Z);
+
+                /// Execute trajectory segment by segment
+                for (int i = 0; i < pointsToExecute.Count - 1; i++)
+                {
+                    var currentPoint = pointsToExecute[i];
+                    var nextPoint = pointsToExecute[i + 1];
+
+                    /// Start the segment move and wait for it to complete
+                    await StartSegmentSync(controller, currentPoint, nextPoint, duration);
+                    await controller.Wait();
 
                     /// Progress notification
-                    if (point.Index % 10 == 0)
-                        NotifyClientConnection($"Path progress for {id}: {point.Index + 1}/{pointsToExecute.Count}");
+                    NotifyClientConnection($"Path progress for {id}: {i + 1}/{pointsToExecute.Count - 1} segments completed.");
                 }
 
                 isPathReady[id] = false; // Path consumed
@@ -608,13 +614,13 @@ namespace MC104.server
         /// <summary>
         /// Executes a stored trajectory using Point-to-Point (PTP) motion for multiple controllers in parallel.
         /// </summary>
-        public async Task PathTracking_Parallel(List<string> ids, double speed)
+        public async Task PathTracking_Parallel(List<string> ids, double duration)
         {
             var trackingTasks = new List<Task<string>>();
 
             foreach (var id in ids)
             {
-                trackingTasks.Add(Task.Run(() => PathTracking(id, speed)));
+                trackingTasks.Add(Task.Run(() => PathTracking(id, duration)));
             }
 
             // Wait for all path tracking tasks to complete.
@@ -670,12 +676,12 @@ namespace MC104.server
                     var currentTarget = trajectoryPoints[i];
                     var nextTarget = trajectoryPoints[i + 1];
                     var prevTarget = trajectoryPoints[i - 1];
-                    
+
                     bool isContinuous = CheckContinuity(prevTarget, currentTarget, nextTarget);
 
                     if (isContinuous)
                     {
-                        bool overrideSuccess = await WaitForOverrideWindowAndExecute(id, controller, prevTarget, currentTarget, nextTarget, chainStartPoint, duration);
+                        bool overrideSuccess = await WaitForOverrideWindowAndExecute_ByTime(id, controller, currentTarget, nextTarget, chainStartPoint, duration);
                         if (!overrideSuccess)
                         {
                             NotifyClientConnection($"[Controller {id}] WARNING: Missed override window at Point {i} for {id}. Resyncing...");
@@ -780,19 +786,42 @@ namespace MC104.server
         }
 
         /// <summary>
-        /// High-frequency polling loop to trigger IndexOverride.
+        /// Waits for a calculated time window and then executes the IndexOverride using a time-based approach.
         /// </summary>
-        private async Task<bool> WaitForOverrideWindowAndExecute(string id, Microsupport controller, TrajectoryPoint prevTarget, TrajectoryPoint currentTarget, TrajectoryPoint nextTarget, TrajectoryPoint chainStart, double duration)
+        private async Task<bool> WaitForOverrideWindowAndExecute_ByTime(string id, Microsupport controller, TrajectoryPoint currentTarget, TrajectoryPoint nextTarget, TrajectoryPoint chainStart, double duration)
         {
-            Stopwatch safetyTimer = Stopwatch.StartNew();
-            long timeoutLimit = 2000; // 2 seconds safety limit
+            double segmentDurationMs = duration * 1000;
+            if (segmentDurationMs <= 0) return false;
 
-            // Calculate total distance for the current segment (prev -> current)
-            double segmentDx = currentTarget.X - prevTarget.X;
-            double segmentDy = currentTarget.Y - prevTarget.Y;
-            double segmentDz = currentTarget.Z - prevTarget.Z;
+            Stopwatch segmentTimer = Stopwatch.StartNew();
+            double waitDurationMs = segmentDurationMs * OVERRIDE_PROGRESS_PERCENT;
 
-            // Pre-calculate cumulative override pulse values for the next segment (start -> next)
+            if (!controller.IsBusy())
+            {
+                NotifyClientConnection($"[Controller {id}] Error: Controller is not busy at the start of time-based wait. Aborting override.");
+                return false;
+            }
+
+            const int marginMs = 10;
+            int delayMs = (int)(waitDurationMs - marginMs);
+            if (delayMs > 0)
+            {
+                await Task.Delay(delayMs);
+            }
+
+            while (segmentTimer.Elapsed.TotalMilliseconds < waitDurationMs)
+            {
+                Thread.SpinWait(1);
+            }
+
+            if (!controller.IsBusy())
+            {
+                NotifyClientConnection($"[Controller {id}] WARNING: Missed override window for Point {nextTarget.Index}. Controller stopped before override time was reached.");
+                return false;
+            }
+
+            NotifyClientConnection($"[Controller {id}] Override window reached at {segmentTimer.Elapsed.TotalMilliseconds:F1}ms. Executing Override to Point {nextTarget.Index} ({nextTarget.X:F1}, {nextTarget.Y:F1}, {nextTarget.Z:F1})");
+
             double totalDistX = Math.Abs(nextTarget.X - chainStart.X);
             double totalDistY = Math.Abs(nextTarget.Y - chainStart.Y);
             double totalDistZ = Math.Abs(nextTarget.Z - chainStart.Z);
@@ -801,59 +830,17 @@ namespace MC104.server
             uint pulseY = (uint)controller.Um2enc(Microsupport.AXIS.Y, totalDistY);
             uint pulseZ = (uint)controller.Um2enc(Microsupport.AXIS.Z, totalDistZ);
 
-            /// Query at high frequency until the override progress threshold is reached
-            while (controller.IsBusy())
-            {
-                if (safetyTimer.ElapsedMilliseconds > timeoutLimit) return false;
+            double next_dx = nextTarget.X - currentTarget.X;
+            double next_dy = nextTarget.Y - currentTarget.Y;
+            double next_dz = nextTarget.Z - currentTarget.Z;
 
-                double[] currentPos = controller.GetPositionsFromCenter();
+            controller.AdjustSpeeds(next_dx, next_dy, next_dz, duration);
 
-                /// Calculate travel progress for the current segment
-                double progressX = (Math.Abs(segmentDx) < 1e-6) ? 1.0 : Math.Abs(currentPos[0] - prevTarget.X) / Math.Abs(segmentDx);
-                double progressY = (Math.Abs(segmentDy) < 1e-6) ? 1.0 : Math.Abs(currentPos[1] - prevTarget.Y) / Math.Abs(segmentDy);
-                double progressZ = (Math.Abs(segmentDz) < 1e-6) ? 1.0 : Math.Abs(currentPos[2] - prevTarget.Z) / Math.Abs(segmentDz);
+            if (Math.Abs(next_dx) > 0.001) controller.IndexOverride(Microsupport.AXIS.X, pulseX);
+            if (Math.Abs(next_dy) > 0.001) controller.IndexOverride(Microsupport.AXIS.Y, pulseY);
+            if (Math.Abs(next_dz) > 0.001) controller.IndexOverride(Microsupport.AXIS.Z, pulseZ);
 
-                /// Calculate the average progress of MOVING axes only
-                double totalProgress = 0;
-                int movingAxesCount = 0;
-                if (Math.Abs(segmentDx) > 1e-6) { totalProgress += progressX; movingAxesCount++; }
-                if (Math.Abs(segmentDy) > 1e-6) { totalProgress += progressY; movingAxesCount++; }
-                if (Math.Abs(segmentDz) > 1e-6) { totalProgress += progressZ; movingAxesCount++; }
-
-                double averageProgress = (movingAxesCount > 0) ? totalProgress / movingAxesCount : 1.0;
-
-                /// Check if the override progress threshold is reached
-                if (averageProgress >= OVERRIDE_PROGRESS_PERCENT)
-                {
-                    string progressLog = $"X: {progressX:P0}, Y: {progressY:P0}, Z: {progressZ:P0}, Avg: {averageProgress:P0}";
-                    NotifyClientConnection($"[Controller {id}] Override Window Reached ({progressLog}). Executing Override to ({nextTarget.X:F1}, {nextTarget.Y:F1}, {nextTarget.Z:F1})");
-
-                    double next_dx = nextTarget.X - currentTarget.X;
-                    double next_dy = nextTarget.Y - currentTarget.Y;
-                    double next_dz = nextTarget.Z - currentTarget.Z;
-
-                    /// Adjust speeds for the next target point before issuing override.
-                    controller.AdjustSpeeds(next_dx, next_dy, next_dz, duration);
-
-                    /// Issue IndexOverride for each axis as needed.
-                    if (Math.Abs(next_dx) > 0.001) controller.IndexOverride(Microsupport.AXIS.X, pulseX);
-                    if (Math.Abs(next_dy) > 0.001) controller.IndexOverride(Microsupport.AXIS.Y, pulseY);
-                    if (Math.Abs(next_dz) > 0.001) controller.IndexOverride(Microsupport.AXIS.Z, pulseZ);
-
-                    return true;
-                }
-
-                /// Reduce log frequency to avoid spamming
-                if (safetyTimer.ElapsedMilliseconds % 100 < 10) // Log roughly every 100ms
-                {
-                    NotifyClientConnection($"[Controller {id}] Waiting for Override. Pos:({currentPos[0]:F1}, {currentPos[1]:F1}, {currentPos[2]:F1}). Progress: X:{progressX:P0}, Y:{progressY:P0}, Z:{progressZ:P0}, Avg:{averageProgress:P0}");
-                }
-
-                /// Brief pause to prevent CPU overload
-                await Task.Delay(1);
-            }
-
-            return false; // Controller stopped before threshold was reached
+            return true;
         }
 
 
