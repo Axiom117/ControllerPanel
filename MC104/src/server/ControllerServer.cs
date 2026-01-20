@@ -32,7 +32,7 @@ namespace MC104.server
 
         /// Configuration
         private readonly int localServerPort = 5000;
-        private const double BASE_SPEED_UM = 2000;  // 2 mm/s
+        private const double SPEED_DEFAULT = 1000.0; // Default speed for movements
         private const double OVERRIDE_PROGRESS_PERCENT = 0.85; // 85%
         private const double DURATION = 0.2; // 200 ms
 
@@ -281,14 +281,14 @@ namespace MC104.server
                         return await SendStatus(ids);
 
                     case "START_STEP":
-                        // Parameters are groups of 4: id, x, y, z. Total params must be 1 (command) + n * 4.
-                        if (parts.Length < 5 || (parts.Length - 1) % 4 != 0)
+                        /// Parameters are groups of 5: id, x, y, z, speed. Total params must be 1 (command) + n * 5.
+                        if (parts.Length < 6 || (parts.Length - 1) % 5 != 0)
                             return "ERROR, 101, Invalid parameters for START_STEP\n";
 
                         var moveTasks = new List<Task>();
                         var controllerIds = new List<string>();
 
-                        for (int i = 1; i < parts.Length; i += 4)
+                        for (int i = 1; i < parts.Length; i += 5)
                         {
                             string id = parts[i];
                             if (!Microsupport.controllers.ContainsKey(id))
@@ -297,13 +297,14 @@ namespace MC104.server
                             double x = double.Parse(parts[i + 1]);
                             double y = double.Parse(parts[i + 2]);
                             double z = double.Parse(parts[i + 3]);
+                            double speed = double.Parse(parts[i + 4]);
 
                             if (Math.Abs(x) > 20000 || Math.Abs(y) > 20000 || Math.Abs(z) > 30000)
                                 return "ERROR, 101, Movement out of bounds\n";
 
                             controllerIds.Add(id);
                             var controller = Microsupport.controllers[id];
-                            moveTasks.Add(controller.StartAbsAllFromCenterAsync(x, y, z));
+                            moveTasks.Add(controller.StartAbsAllFromCenterAsync(x, y, z, speed));
                         }
 
                         // Execute all moves in parallel and wait for completion
@@ -316,45 +317,31 @@ namespace MC104.server
                             return "ERROR, 101, Invalid parameters for PATH_DATA\n";
                         return ProcessPathData(parts[1], request);
 
-                    case "START_PATH":
+                    case "START_PATH_PTP":
                         if (parts.Length < 2)
-                            return "ERROR, 101, Invalid parameters for START_PATH\n";
+                            return "ERROR, 101, Invalid parameters for START_PATH_PTP\n";
 
-                        string id_path = parts[1];
-                        /// Send immediate acknowledgment
-                        string ackResponse = $"PATH_TRACKING_STARTED, {id_path}\n";
+                        var ids_path_ptp = parts.Skip(1).ToList();
+                        /// Send immediate acknowledgment for all specified controllers
+                        string ackResponse = $"PATH_TRACKING_PTP_STARTED, {string.Join(", ", ids_path_ptp)}\n";
                         byte[] ackData = Encoding.UTF8.GetBytes(ackResponse);
                         await stream.WriteAsync(ackData, 0, ackData.Length);
                         await stream.FlushAsync();
                         NotifyClientConnection($"Controller Sent: {ackResponse.Trim()}");
 
-                        /// Start path tracking asynchronously
+                        /// Start parallel path tracking asynchronously
                         _ = Task.Run(async () =>
                         {
                             try
                             {
-                                /// Execute path tracking
-                                string result = await PathTracking(id_path, DURATION);
-
-                                /// Check if stream is still valid before sending
-                                if (stream.CanWrite)
-                                {
-                                    byte[] resultData = Encoding.UTF8.GetBytes(result);
-                                    await stream.WriteAsync(resultData, 0, resultData.Length);
-                                    await stream.FlushAsync();
-                                    NotifyClientConnection($"Controller Sent: {result.Trim()}");
-                                }
+                                /// Execute parallel path tracking
+                                await PathTrackingPTP_Parallel(ids_path_ptp, DURATION, stream);
                             }
                             catch (Exception ex)
                             {
-                                if (stream.CanWrite)
-                                {
-                                    string errorResult = $"ERROR, 104, Path tracking exception: {ex.Message}\n";
-                                    byte[] errorData = Encoding.UTF8.GetBytes(errorResult);
-                                    await stream.WriteAsync(errorData, 0, errorData.Length);
-                                    await stream.FlushAsync();
-                                    NotifyClientConnection($"Controller Sent: {errorResult.Trim()}");
-                                }
+                                // This top-level catch might be useful for aggregate errors,
+                                // though individual errors are handled within PathTrackingPTP_Parallel.
+                                NotifyClientConnection($"[ERROR] An exception occurred during parallel PTP path execution: {ex.Message}");
                             }
                         });
 
@@ -378,7 +365,7 @@ namespace MC104.server
                             try
                             {
                                 /// Execute parallel path tracking
-                                await PathTrackingCP_Parallel(ids_path_cp, DURATION);
+                                await PathTrackingCP_Parallel(ids_path_cp, DURATION, stream);
 
                                 /// After all parallel tasks are complete, we could send a final confirmation.
                                 /// However, PathTrackingCP_Parallel already logs completion for each controller.
@@ -538,7 +525,6 @@ namespace MC104.server
                         X = double.Parse(values[idx]),
                         Y = double.Parse(values[idx + 1]),
                         Z = double.Parse(values[idx + 2]),
-                        Speed = BASE_SPEED_UM, // Always use the base speed
                         Index = i
                     };
                     trajectoryData[controllerId].Add(point);
@@ -555,7 +541,7 @@ namespace MC104.server
         /// <summary>
         /// PathTracking - Execute stored trajectory for a single controller using duration-based segments.
         /// </summary>
-        public async Task<string> PathTracking(string id, double duration)
+        public async Task<string> PathTrackingPTP(string id, double duration)
         {
             if (!isPathReady.ContainsKey(id) || !isPathReady[id])
                 return $"ERROR, 104, No path data ready for execution for {id}\n";
@@ -582,7 +568,7 @@ namespace MC104.server
                 // Move to the start point before beginning segmented moves
                 var startPoint = pointsToExecute[0];
                 NotifyClientConnection($"[Controller {id}] Moving to start point ({startPoint.X:F1}, {startPoint.Y:F1}, {startPoint.Z:F1})...");
-                await controller.StartAbsAllFromCenterAsync(startPoint.X, startPoint.Y, startPoint.Z);
+                await controller.StartAbsAllFromCenterAsync(startPoint.X, startPoint.Y, startPoint.Z, SPEED_DEFAULT);
 
 
                 /// Execute trajectory segment by segment
@@ -614,23 +600,35 @@ namespace MC104.server
         /// <summary>
         /// Executes a stored trajectory using Point-to-Point (PTP) motion for multiple controllers in parallel.
         /// </summary>
-        public async Task PathTracking_Parallel(List<string> ids, double duration)
+        public async Task PathTrackingPTP_Parallel(List<string> ids, double duration, NetworkStream stream)
         {
-            var trackingTasks = new List<Task<string>>();
+            var trackingTasks = new List<Task>();
 
             foreach (var id in ids)
             {
-                trackingTasks.Add(Task.Run(() => PathTracking(id, duration)));
+                trackingTasks.Add(Task.Run(async () =>
+                {
+                    string result = await PathTrackingPTP(id, duration);
+                    NotifyClientConnection($"Parallel PTP execution result for {id}: {result.Trim()}");
+
+                    if (stream != null && stream.CanWrite)
+                    {
+                        try
+                        {
+                            byte[] resultData = Encoding.UTF8.GetBytes(result);
+                            await stream.WriteAsync(resultData, 0, resultData.Length);
+                            await stream.FlushAsync();
+                            NotifyClientConnection($"Controller Sent: {result.Trim()}");
+                        }
+                        catch (Exception ex)
+                        {
+                            NotifyClientConnection($"Failed to send parallel PTP result for {id}: {ex.Message}");
+                        }
+                    }
+                }));
             }
 
-            // Wait for all path tracking tasks to complete.
-            var results = await Task.WhenAll(trackingTasks);
-
-            // Log the results for each controller.
-            for (int i = 0; i < ids.Count; i++)
-            {
-                NotifyClientConnection($"Parallel PTP execution result for {ids[i]}: {results[i].Trim()}");
-            }
+            await Task.WhenAll(trackingTasks);
         }
 
         /// <summary>
@@ -660,7 +658,7 @@ namespace MC104.server
                 /// Move to the first point of the trajectory before starting CP motion.
                 var startPoint = trajectoryPoints[0];
                 NotifyClientConnection($"[Controller {id}] Moving to start point ({startPoint.X:F1}, {startPoint.Y:F1}, {startPoint.Z:F1})...");
-                await controller.StartAbsAllFromCenterAsync(startPoint.X, startPoint.Y, startPoint.Z);
+                await controller.StartAbsAllFromCenterAsync(startPoint.X, startPoint.Y, startPoint.Z, SPEED_DEFAULT);
 
                 /// 'chainStartPoint' acts as the reference origin for the current continuous move chain.
                 TrajectoryPoint chainStartPoint = trajectoryPoints[0];
@@ -718,26 +716,35 @@ namespace MC104.server
         /// <summary>
         /// Executes a stored trajectory using Continuous Path (CP) motion for multiple controllers in parallel.
         /// </summary>
-        public async Task PathTrackingCP_Parallel(List<string> ids, double duration)
+        public async Task PathTrackingCP_Parallel(List<string> ids, double duration, NetworkStream stream)
         {
-            var trackingTasks = new List<Task<string>>();
+            var trackingTasks = new List<Task>();
 
             foreach (var id in ids)
             {
-                /// For each controller, create a new task to run its path tracking logic.
-                /// This ensures each controller's logic runs on a separate thread from the thread pool,
-                /// allowing true parallel execution.
-                trackingTasks.Add(Task.Run(() => PathTrackingCP(id, duration)));
+                trackingTasks.Add(Task.Run(async () =>
+                {
+                    string result = await PathTrackingCP(id, duration);
+                    NotifyClientConnection($"Parallel CP execution result for {id}: {result.Trim()}");
+
+                    if (stream != null && stream.CanWrite)
+                    {
+                        try
+                        {
+                            byte[] resultData = Encoding.UTF8.GetBytes(result);
+                            await stream.WriteAsync(resultData, 0, resultData.Length);
+                            await stream.FlushAsync();
+                            NotifyClientConnection($"Controller Sent: {result.Trim()}");
+                        }
+                        catch (Exception ex)
+                        {
+                            NotifyClientConnection($"Failed to send parallel CP result for {id}: {ex.Message}");
+                        }
+                    }
+                }));
             }
 
-            /// Wait for all path tracking tasks to complete.
-            var results = await Task.WhenAll(trackingTasks);
-
-            /// Log the results for each controller.
-            for (int i = 0; i < ids.Count; i++)
-            {
-                NotifyClientConnection($"Parallel execution result for {ids[i]}: {results[i].Trim()}");
-            }
+            await Task.WhenAll(trackingTasks);
         }
 
         #endregion
@@ -778,9 +785,13 @@ namespace MC104.server
             var yDir = dy >= 0 ? Microsupport.DIRECTION.FORWARD : Microsupport.DIRECTION.REVERSE;
             var zDir = dz >= 0 ? Microsupport.DIRECTION.REVERSE : Microsupport.DIRECTION.FORWARD; // Note: Z axis direction is inverted considering the physical setup of Microsupport
 
+            /// Adjust speeds for synchronized movement over the specified duration
+            controller.AdjustSpeeds(Math.Abs(dx), Math.Abs(dy), Math.Abs(dz), duration);
+
+            /// Start incremental movement on all axes
             controller.StartIncAll(xDir, Math.Abs(dx),
                                    yDir, Math.Abs(dy),
-                                   zDir, Math.Abs(dz), duration);
+                                   zDir, Math.Abs(dz));
 
             await Task.Delay(1);
         }

@@ -220,7 +220,7 @@ namespace MC104
             this.posZ.Font = new System.Drawing.Font("Consolas", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.posZ.Location = new System.Drawing.Point(90, 121);
             this.posZ.Name = "posZ";
-            this.posZ.Size = new System.Drawing.Size(59, 32);
+            this.posZ.Size = new System.Drawing.Size(46, 24);
             this.posZ.TabIndex = 61;
             this.posZ.Text = "0.0";
             this.posZ.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
@@ -231,7 +231,7 @@ namespace MC104
             this.posY.Font = new System.Drawing.Font("Consolas", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.posY.Location = new System.Drawing.Point(90, 76);
             this.posY.Name = "posY";
-            this.posY.Size = new System.Drawing.Size(59, 32);
+            this.posY.Size = new System.Drawing.Size(46, 24);
             this.posY.TabIndex = 60;
             this.posY.Text = "0.0";
             this.posY.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
@@ -242,7 +242,7 @@ namespace MC104
             this.posX.Font = new System.Drawing.Font("Consolas", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.posX.Location = new System.Drawing.Point(90, 31);
             this.posX.Name = "posX";
-            this.posX.Size = new System.Drawing.Size(59, 32);
+            this.posX.Size = new System.Drawing.Size(46, 24);
             this.posX.TabIndex = 59;
             this.posX.Text = "0.0";
             this.posX.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
@@ -253,7 +253,7 @@ namespace MC104
             this.label6.Font = new System.Drawing.Font("Consolas", 15F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.label6.Location = new System.Drawing.Point(170, 120);
             this.label6.Name = "label6";
-            this.label6.Size = new System.Drawing.Size(41, 29);
+            this.label6.Size = new System.Drawing.Size(32, 23);
             this.label6.TabIndex = 67;
             this.label6.Text = "μm";
             // 
@@ -263,7 +263,7 @@ namespace MC104
             this.label5.Font = new System.Drawing.Font("Consolas", 15F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.label5.Location = new System.Drawing.Point(170, 77);
             this.label5.Name = "label5";
-            this.label5.Size = new System.Drawing.Size(41, 29);
+            this.label5.Size = new System.Drawing.Size(32, 23);
             this.label5.TabIndex = 66;
             this.label5.Text = "μm";
             // 
@@ -274,7 +274,7 @@ namespace MC104
             this.label1.ForeColor = System.Drawing.Color.Red;
             this.label1.Location = new System.Drawing.Point(14, 30);
             this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(89, 32);
+            this.label1.Size = new System.Drawing.Size(70, 24);
             this.label1.TabIndex = 62;
             this.label1.Text = "X^0: ";
             // 
@@ -285,7 +285,7 @@ namespace MC104
             this.label2.ForeColor = System.Drawing.Color.ForestGreen;
             this.label2.Location = new System.Drawing.Point(14, 74);
             this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(104, 32);
+            this.label2.Size = new System.Drawing.Size(82, 24);
             this.label2.TabIndex = 63;
             this.label2.Text = "Y^0:  ";
             // 
@@ -295,7 +295,7 @@ namespace MC104
             this.label4.Font = new System.Drawing.Font("Consolas", 15F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.label4.Location = new System.Drawing.Point(170, 29);
             this.label4.Name = "label4";
-            this.label4.Size = new System.Drawing.Size(41, 29);
+            this.label4.Size = new System.Drawing.Size(32, 23);
             this.label4.TabIndex = 65;
             this.label4.Text = "μm";
             // 
@@ -306,7 +306,7 @@ namespace MC104
             this.label3.ForeColor = System.Drawing.Color.Blue;
             this.label3.Location = new System.Drawing.Point(14, 121);
             this.label3.Name = "label3";
-            this.label3.Size = new System.Drawing.Size(104, 32);
+            this.label3.Size = new System.Drawing.Size(82, 24);
             this.label3.TabIndex = 64;
             this.label3.Text = "Z^0:  ";
             // 
@@ -335,7 +335,7 @@ namespace MC104
             this.label16.Font = new System.Drawing.Font("Consolas", 15F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.label16.Location = new System.Drawing.Point(174, 121);
             this.label16.Name = "label16";
-            this.label16.Size = new System.Drawing.Size(41, 29);
+            this.label16.Size = new System.Drawing.Size(32, 23);
             this.label16.TabIndex = 75;
             this.label16.Text = "μm";
             // 
@@ -345,7 +345,7 @@ namespace MC104
             this.label15.Font = new System.Drawing.Font("Consolas", 15F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.label15.Location = new System.Drawing.Point(174, 77);
             this.label15.Name = "label15";
-            this.label15.Size = new System.Drawing.Size(41, 29);
+            this.label15.Size = new System.Drawing.Size(32, 23);
             this.label15.TabIndex = 74;
             this.label15.Text = "μm";
             // 
@@ -355,7 +355,7 @@ namespace MC104
             this.label14.Font = new System.Drawing.Font("Consolas", 15F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.label14.Location = new System.Drawing.Point(174, 30);
             this.label14.Name = "label14";
-            this.label14.Size = new System.Drawing.Size(41, 29);
+            this.label14.Size = new System.Drawing.Size(32, 23);
             this.label14.TabIndex = 68;
             this.label14.Text = "μm";
             // 
@@ -366,7 +366,7 @@ namespace MC104
             this.label13.ForeColor = System.Drawing.Color.Blue;
             this.label13.Location = new System.Drawing.Point(10, 121);
             this.label13.Name = "label13";
-            this.label13.Size = new System.Drawing.Size(89, 32);
+            this.label13.Size = new System.Drawing.Size(70, 24);
             this.label13.TabIndex = 68;
             this.label13.Text = "Z^C: ";
             // 
@@ -377,7 +377,7 @@ namespace MC104
             this.label12.ForeColor = System.Drawing.Color.ForestGreen;
             this.label12.Location = new System.Drawing.Point(10, 75);
             this.label12.Name = "label12";
-            this.label12.Size = new System.Drawing.Size(89, 32);
+            this.label12.Size = new System.Drawing.Size(70, 24);
             this.label12.TabIndex = 68;
             this.label12.Text = "Y^C: ";
             // 
@@ -388,7 +388,7 @@ namespace MC104
             this.label11.ForeColor = System.Drawing.Color.Red;
             this.label11.Location = new System.Drawing.Point(9, 28);
             this.label11.Name = "label11";
-            this.label11.Size = new System.Drawing.Size(89, 32);
+            this.label11.Size = new System.Drawing.Size(70, 24);
             this.label11.TabIndex = 68;
             this.label11.Text = "X^C: ";
             // 
@@ -398,7 +398,7 @@ namespace MC104
             this.posZC.Font = new System.Drawing.Font("Consolas", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.posZC.Location = new System.Drawing.Point(93, 120);
             this.posZC.Name = "posZC";
-            this.posZC.Size = new System.Drawing.Size(59, 32);
+            this.posZC.Size = new System.Drawing.Size(46, 24);
             this.posZC.TabIndex = 73;
             this.posZC.Text = "0.0";
             this.posZC.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
@@ -409,7 +409,7 @@ namespace MC104
             this.posYC.Font = new System.Drawing.Font("Consolas", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.posYC.Location = new System.Drawing.Point(93, 75);
             this.posYC.Name = "posYC";
-            this.posYC.Size = new System.Drawing.Size(59, 32);
+            this.posYC.Size = new System.Drawing.Size(46, 24);
             this.posYC.TabIndex = 72;
             this.posYC.Text = "0.0";
             this.posYC.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
@@ -420,7 +420,7 @@ namespace MC104
             this.posXC.Font = new System.Drawing.Font("Consolas", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.posXC.Location = new System.Drawing.Point(93, 28);
             this.posXC.Name = "posXC";
-            this.posXC.Size = new System.Drawing.Size(59, 32);
+            this.posXC.Size = new System.Drawing.Size(46, 24);
             this.posXC.TabIndex = 71;
             this.posXC.Text = "0.0";
             this.posXC.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
@@ -472,7 +472,7 @@ namespace MC104
             this.deviceStatus.ForeColor = System.Drawing.Color.Firebrick;
             this.deviceStatus.Location = new System.Drawing.Point(12, 218);
             this.deviceStatus.Name = "deviceStatus";
-            this.deviceStatus.Size = new System.Drawing.Size(0, 29);
+            this.deviceStatus.Size = new System.Drawing.Size(0, 24);
             this.deviceStatus.TabIndex = 0;
             // 
             // clearLogButton
@@ -657,7 +657,7 @@ namespace MC104
             this.stepDistance.Location = new System.Drawing.Point(87, 95);
             this.stepDistance.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
             this.stepDistance.Name = "stepDistance";
-            this.stepDistance.Size = new System.Drawing.Size(102, 37);
+            this.stepDistance.Size = new System.Drawing.Size(102, 31);
             this.stepDistance.TabIndex = 71;
             this.stepDistance.Text = "0.0";
             this.stepDistance.TextAlign = System.Windows.Forms.HorizontalAlignment.Right;
@@ -668,7 +668,7 @@ namespace MC104
             this.label9.Font = new System.Drawing.Font("Consolas", 14.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.label9.Location = new System.Drawing.Point(195, 101);
             this.label9.Name = "label9";
-            this.label9.Size = new System.Drawing.Size(38, 28);
+            this.label9.Size = new System.Drawing.Size(30, 22);
             this.label9.TabIndex = 72;
             this.label9.Text = "μm";
             // 
@@ -711,7 +711,7 @@ namespace MC104
             this.label18.Font = new System.Drawing.Font("Consolas", 12F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.label18.Location = new System.Drawing.Point(147, 107);
             this.label18.Name = "label18";
-            this.label18.Size = new System.Drawing.Size(54, 23);
+            this.label18.Size = new System.Drawing.Size(45, 19);
             this.label18.TabIndex = 75;
             this.label18.Text = "2500";
             // 
@@ -721,7 +721,7 @@ namespace MC104
             this.label17.Font = new System.Drawing.Font("Consolas", 12F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.label17.Location = new System.Drawing.Point(6, 107);
             this.label17.Name = "label17";
-            this.label17.Size = new System.Drawing.Size(32, 23);
+            this.label17.Size = new System.Drawing.Size(27, 19);
             this.label17.TabIndex = 74;
             this.label17.Text = "50";
             // 
@@ -732,7 +732,7 @@ namespace MC104
             this.trackBar1.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
             this.trackBar1.Maximum = 2500;
             this.trackBar1.Name = "trackBar1";
-            this.trackBar1.Size = new System.Drawing.Size(183, 56);
+            this.trackBar1.Size = new System.Drawing.Size(183, 45);
             this.trackBar1.TabIndex = 50;
             this.trackBar1.TickFrequency = 10000;
             this.trackBar1.Value = 1500;
@@ -744,7 +744,7 @@ namespace MC104
             this.labelSpeed.Font = new System.Drawing.Font("Consolas", 14.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.labelSpeed.Location = new System.Drawing.Point(51, 41);
             this.labelSpeed.Name = "labelSpeed";
-            this.labelSpeed.Size = new System.Drawing.Size(129, 28);
+            this.labelSpeed.Size = new System.Drawing.Size(100, 22);
             this.labelSpeed.TabIndex = 73;
             this.labelSpeed.Text = "1500 μm/s";
             // 
@@ -1013,10 +1013,10 @@ namespace MC104
             // 
             this.pathDataListBox.Font = new System.Drawing.Font("Consolas", 10.8F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.pathDataListBox.FormattingEnabled = true;
-            this.pathDataListBox.ItemHeight = 22;
+            this.pathDataListBox.ItemHeight = 17;
             this.pathDataListBox.Location = new System.Drawing.Point(10, 29);
             this.pathDataListBox.Name = "pathDataListBox";
-            this.pathDataListBox.Size = new System.Drawing.Size(228, 158);
+            this.pathDataListBox.Size = new System.Drawing.Size(228, 157);
             this.pathDataListBox.TabIndex = 87;
             // 
             // saveLogButton
@@ -1043,7 +1043,7 @@ namespace MC104
             // 
             // ControllerPanel
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 17F);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.AutoSize = true;
             this.BackColor = System.Drawing.SystemColors.Window;

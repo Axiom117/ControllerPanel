@@ -786,16 +786,13 @@ namespace MicrosupportController
         /// </summary>
         public uint StartIncAll(DIRECTION xDir, double xUm,
                                     DIRECTION yDir, double yUm,
-                                    DIRECTION zDir, double zUm, double duration)
+                                    DIRECTION zDir, double zUm)
         {
             if (!this.IsValid) return Hpmcstd.MCSD_ERROR_NO_DEVICE;
 
             /// Determine the maximum displacement among the three axes.
             double maxDisplacement = Math.Max(Math.Abs(xUm), Math.Max(Math.Abs(yUm), Math.Abs(zUm)));
             if (maxDisplacement < 1e-6) return Hpmcstd.MCSD_ERROR_SUCCESS; // No movement
-
-            /// Adjust speeds for synchronized movement over the specified duration
-            AdjustSpeeds(xUm, yUm, zUm, duration);
 
             /// Start movement for all axes
             uint resX = StartInc(AXIS.X, xDir, xUm);
@@ -859,36 +856,44 @@ namespace MicrosupportController
         /// <summary>
         /// Moves the X, Y, and Z axes to the specified absolute positions.
         /// </summary>
-        public void StartAbsAll(double XTarget, double YTarget, double ZTarget)
+        public void StartAbsAll(double XTarget, double YTarget, double ZTarget, double speed)
         {
             if (!this.IsValid) return;
 
-            _ = StartAbs(AXIS.X, XTarget);
-            _ = StartAbs(AXIS.Y, YTarget);
-            _ = StartAbs(AXIS.Z, ZTarget);
-        }
+            double[] currentPositions = GetPositions();
+            if (currentPositions == null) return;
 
-        public void StartAbsFromCenter(AXIS axis, double position)
-        {
-            switch (axis)
-            {
-                case AXIS.X:
-                    StartAbs(AXIS.X, position + RANGE_X / 2);
-                    break;
-                case AXIS.Y:
-                    StartAbs(AXIS.Y, position + RANGE_Y / 2);
-                    break;
-                case AXIS.Z:
-                    StartAbs(AXIS.Z, -position + RANGE_Z / 2);
-                    break;
-            }
+            double currentX = currentPositions[0];
+            double currentY = currentPositions[1];
+            double currentZ = currentPositions[2];
+
+            double deltaX = XTarget - currentX;
+            double deltaY = YTarget - currentY;
+            double deltaZ = ZTarget - currentZ;
+
+            DIRECTION xDir = (deltaX >= 0) ? DIRECTION.FORWARD : DIRECTION.REVERSE;
+            DIRECTION yDir = (deltaY >= 0) ? DIRECTION.FORWARD : DIRECTION.REVERSE;
+            DIRECTION zDir = (deltaZ >= 0) ? DIRECTION.REVERSE : DIRECTION.FORWARD;
+
+            double xUm = Math.Abs(deltaX);
+            double yUm = Math.Abs(deltaY);
+            double zUm = Math.Abs(deltaZ);
+
+            /// Calculate the vector distance (Euclidean distance) for the movement.
+            double distance = Math.Sqrt(xUm * xUm + yUm * yUm + zUm * zUm);
+
+            /// Calculate the duration based on the vector distance and the desired speed.
+            /// Avoid division by zero if speed is not positive.
+            double duration = (speed > 0) ? distance / speed : 0;
+
+            AdjustSpeeds(xUm, yUm, zUm, duration);
+            StartIncAll(xDir, xUm, yDir, yUm, zDir, zUm);
         }
 
         /// Relative step movement from the current position of the axes. Origin is the center of the stoke.
-        public async Task StartAbsAllFromCenterAsync(double x, double y, double z)
+        public async Task StartAbsAllFromCenterAsync(double x, double y, double z, double speed)
         {
-
-            StartAbsAll(x + RANGE_X / 2, y + RANGE_Y / 2, -z + RANGE_Z / 2);
+            StartAbsAll(x + RANGE_X / 2, y + RANGE_Y / 2, -z + RANGE_Z / 2, speed);
 
             await Wait();
         }
