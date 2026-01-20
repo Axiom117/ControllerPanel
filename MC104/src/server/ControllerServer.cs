@@ -275,13 +275,14 @@ namespace MC104.server
                         return "HEARTBEAT_OK\n";
 
                     case "GET_STATUS":
+                        /// Returned status format: STATUS, id1, x1, y1, z1, id2, x2, y2, z2, ...
                         if (parts.Length < 2)
                             return "ERROR, 101, Invalid parameters for GET_STATUS\n";
                         string[] ids = parts.Skip(1).ToArray();
                         return await SendStatus(ids);
 
                     case "START_STEP":
-                        /// Parameters are groups of 5: id, x, y, z, speed. Total params must be 1 (command) + n * 5.
+                        /// Parameters are groups of 5: [id, x, y, z, speed]. Total params must be 1 (command) + n * 5.
                         if (parts.Length < 6 || (parts.Length - 1) % 5 != 0)
                             return "ERROR, 101, Invalid parameters for START_STEP\n";
 
@@ -307,21 +308,26 @@ namespace MC104.server
                             moveTasks.Add(controller.StartAbsAllFromCenterAsync(x, y, z, speed));
                         }
 
-                        // Execute all moves in parallel and wait for completion
+                        /// Execute all moves in parallel and wait for completion
                         await Task.WhenAll(moveTasks);
 
                         return $"STEP_COMPLETED, {string.Join(", ", controllerIds)}\n";
 
                     case "PATH_DATA":
+                        /// Request format: PATH_DATA, id, x1, y1, z1, x2, y2, z2, ...
                         if (parts.Length < 2)
                             return "ERROR, 101, Invalid parameters for PATH_DATA\n";
                         return ProcessPathData(parts[1], request);
 
                     case "START_PATH_PTP":
-                        if (parts.Length < 2)
+                        /// Request format: START_PATH_PTP, duration, id1, id2, ...
+                        if (parts.Length < 3)
                             return "ERROR, 101, Invalid parameters for START_PATH_PTP\n";
 
-                        var ids_path_ptp = parts.Skip(1).ToList();
+                        if (!double.TryParse(parts[1], out double ptpDuration))
+                            return "ERROR, 101, Invalid duration parameter for START_PATH_PTP\n";
+
+                        var ids_path_ptp = parts.Skip(2).ToList();
                         /// Send immediate acknowledgment for all specified controllers
                         string ackResponse = $"PATH_TRACKING_PTP_STARTED, {string.Join(", ", ids_path_ptp)}\n";
                         byte[] ackData = Encoding.UTF8.GetBytes(ackResponse);
@@ -335,23 +341,28 @@ namespace MC104.server
                             try
                             {
                                 /// Execute parallel path tracking
-                                await PathTrackingPTP_Parallel(ids_path_ptp, DURATION, stream);
+                                await PathTrackingPTP_Parallel(ids_path_ptp, ptpDuration, stream);
                             }
                             catch (Exception ex)
                             {
-                                // This top-level catch might be useful for aggregate errors,
-                                // though individual errors are handled within PathTrackingPTP_Parallel.
+                                /// This top-level catch might be useful for aggregate errors,
+                                /// though individual errors are handled within PathTrackingPTP_Parallel.
                                 NotifyClientConnection($"[ERROR] An exception occurred during parallel PTP path execution: {ex.Message}");
                             }
                         });
 
                         /// Return empty string since we already sent the acknowledgment
                         return string.Empty;
+
                     case "START_PATH_CP":
-                        if (parts.Length < 2)
+                        /// Request format: START_PATH_CP, duration, id1, id2, ...
+                        if (parts.Length < 3)
                             return "ERROR, 101, Invalid parameters for START_PATH_CP\n";
 
-                        var ids_path_cp = parts.Skip(1).ToList();
+                        if (!double.TryParse(parts[1], out double cpDuration))
+                            return "ERROR, 101, Invalid duration parameter for START_PATH_CP\n";
+
+                        var ids_path_cp = parts.Skip(2).ToList();
                         /// Send immediate acknowledgment for all specified controllers
                         string ackResponseCP = $"PATH_TRACKING_CP_STARTED, {string.Join(", ", ids_path_cp)}\n";
                         byte[] ackDataCP = Encoding.UTF8.GetBytes(ackResponseCP);
@@ -365,17 +376,12 @@ namespace MC104.server
                             try
                             {
                                 /// Execute parallel path tracking
-                                await PathTrackingCP_Parallel(ids_path_cp, DURATION, stream);
-
-                                /// After all parallel tasks are complete, we could send a final confirmation.
-                                /// However, PathTrackingCP_Parallel already logs completion for each controller.
-                                /// The API specifies PATH_COMPLETED is sent per controller inside PathTrackingCP.
-                                /// If a collective notification is needed, it can be added here.
+                                await PathTrackingCP_Parallel(ids_path_cp, cpDuration, stream);
                             }
                             catch (Exception ex)
                             {
-                                // This top-level catch might be useful for aggregate errors,
-                                // though individual errors are handled within PathTrackingCP.
+                                /// This top-level catch might be useful for aggregate errors,
+                                /// though individual errors are handled within PathTrackingCP.
                                 NotifyClientConnection($"[ERROR] An exception occurred during parallel CP path execution: {ex.Message}");
                             }
                         });
@@ -440,7 +446,7 @@ namespace MC104.server
         {
             try
             {
-                // Command is "PATH_DATA", controllerId is at index 1, payload starts after that.
+                /// Command is "PATH_DATA", controllerId is at index 1, payload starts after that.
                 int firstComma = rawData.IndexOf(',');
                 int secondComma = rawData.IndexOf(',', firstComma + 1);
                 if (secondComma == -1)

@@ -6,7 +6,7 @@
 * `axisY`: Y-axis resolution
 * `axisZ`: Z-axis resolution
 
-# API Specification (v1.1)
+# API Specification (v2.1)
 
 ## 1. Controller Server (WinForms C# APP)
 
@@ -20,12 +20,12 @@ ERROR, <code>, <message>
 
 ### 1.2 Methods
 
-#### SendStatus(id1, id2)
+#### GetStatus
 
-* **Trigger:** `GET_STATUS, <id1>, <id2>`
+* **Trigger:** `GET_STATUS,<id1>,<id2>`
 * **Action:**
 
-  1. Validate `id1` and `id2`.
+  1. Validate manipulator IDs.
   2. Read current displacement `(X, Y, Z)` from center for each manipulator.
 * **Response:**
 
@@ -33,61 +33,88 @@ ERROR, <code>, <message>
   STATUS, <id1>, <X1>, <Y1>, <Z1>, <id2>, <X2>, <Y2>, <Z2>
   ```
 
-#### StepAbsFromCenter(id1, X, Y, Z)
+#### StepAbsFromCenter(id1, X, Y, Z, speed)
 
-* **Trigger:** `START_STEP, <id1>, <X1>, <Y1>, <Z1>, <id2>, <X2>, <Y2>, <Z2>, <id3>...`
+* **Trigger:** `START_STEP,<id1>,<X1>,<Y1>,<Z1>,<speed1>,<id2>,<X2>,<Y2>,<Z2>,<speed2>`
 * **Action:**
 
-  1. Validate manipulator IDs and bounds of `(X, Y, Z)`.
-  2. Perform incremental move: steps = value / resolution per axis.
-  3. On success, respond with completion message.
+  1. Validate manipulator IDs and bounds of coordinates for each manipulator.
+  2. Perform an absolute move for each manipulator to the specified `(X, Y, Z)` coordinates from the center with the specified speeds `<speed>`.
+  3. On success, respond with a completion message.
 * **Response:**
 
   ```text
-  STEP_COMPLETED, <id1>, <id2>
+  STEP_COMPLETED, <id1>, <id2>, ...
   ```
 
 #### ProcessPathData(rawData)
 
-* **Trigger:** `PATH_DATA, <payload>`
+* **Trigger:** `PATH_DATA, <controllerId>, <payload>`
 * **Action:**
 
-  1. Parse payload into sequence of 6-tuples: `[X1, Y1, Z1, X2, Y2, Z2]...`.
-  2. Validate format and count.
-  3. Store internally.
+  1. Parse the comma-separated `payload` into a sequence of 3-tuples `(X, Y, Z)`.
+  2. Validate the format and store the trajectory for the specified `controllerId`.
 * **Response:**
 
   ```text
-  PATH_DATA_RECEIVED
+  PATH_DATA_RECEIVED, <controllerId>
   ```
 
-#### PathTracking(id1, id2)
+#### StartPathTrackingPTP (Point-to-Point)
 
-* **Trigger:** `START_PATH, <id1>, <id2>`
+* **Trigger:** `START_PATH_PTP,<duration>,<id1>,<id2>,...`
 * **Action:**
 
-  1. For each time step in stored path:
-
-     * Extract `(X1, Y1, Z1, X2, Y2, Z2)`.
-     * Call `StepInc(id1, id2, X1, Y1, Z1)` and `StepInc(id1, id2, X2, Y2, Z2)` or batching as needed.
-  2. On any failure, abort and send error.
-  3. On completion, call `SendStatus(id1, id2)`.
-* **Response:**
+  1. Validate parameters and manipulator IDs.
+  2. Immediately send an acknowledgment that path tracking has started.
+  3. Asynchronously execute the stored trajectory for each specified manipulator using Point-to-Point (PTP) motion. Each segment's duration is controlled by the `<duration>` parameter.
+  4. After each manipulator completes its path, send a `PATH_COMPLETED` or `ERROR` message for that specific manipulator.
+* **Initial Response (Acknowledgment):**
 
   ```text
-  PATH_COMPLETED, <id1>, <id2>
+	PATH_TRACKING_PTP_STARTED,<id1>,<id2>,...
   ```
+
+* **Final Response (per manipulator):**
+
+  ```text
+  PATH_COMPLETED, <id>
+  ```
+
+
+#### StartPathTrackingCP (Continuous Path)
+
+* **Trigger:** `START_PATH_CP,<duration>,<id1>,<id2>,...`
+* **Action:**
+
+  1. Validate parameters and manipulator IDs.
+  2. Immediately send an acknowledgment that path tracking has started.
+  3. Asynchronously execute the stored trajectory for each specified manipulator using high-precision Continuous Path (CP) motion. This involves overriding moves to create a smooth path without stopping at each point.
+  4. After each manipulator completes its path, send a `PATH_COMPLETED` or `ERROR` message for that specific manipulator.
+* **Initial Response (Acknowledgment):**
+
+  ```text
+	PATH_TRACKING_CP_STARTED,<id1>,<id2>,...
+  ```
+* 
+* **Final Response (per manipulator):**
+
+  ```text
+  PATH_COMPLETED, <id>
+  ```
+
 
 ### 1.3 Request → Response Map
 
-| Request                               | Response                                             |
-| ------------------------------------- | ---------------------------------------------------- |
-| `HEARTBEAT`                           | `HEARTBEAT_OK`                                       |
-| `GET_STATUS, <id1>, <id2>`            | `STATUS, <id1>, <X1>,<Y1>,<Z1>,<id2>,<X2>,<Y2>,<Z2>` |
-| `START_STEP, <id1>,<id2>,<X>,<Y>,<Z>` | `STEP_COMPLETED, <id1>, <id2>`                       |
-| `PATH_DATA, <payload>`                | `PATH_DATA_RECEIVED`                                 |
-| `START_PATH, <id1>, <id2>`            | `PATH_COMPLETED, <id1>, <id2>`                       |
-| *invalid or unknown request*          | `ERROR, <code>, <message>`                           |
+| Request                                                     | Response                                                                                             |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `HEARTBEAT`                                                 | `HEARTBEAT_OK`                                                                                       |
+| `GET_STATUS,<id1>,<id2>,...`                                | `STATUS,<id1>,<X1>,<Y1>,<Z1>,<id2>,<X2>,<Y2>,<Z2>,...`                                                 |
+| `START_STEP,<id1>,<x>,<y>,<z>,<speed>,...`                   | `STEP_COMPLETED,<id1>,...`                                                                            |
+| `PATH_DATA,<id>,<payload>`                                  | `PATH_DATA_RECEIVED,<id>`                                                                            |
+| `START_PATH_PTP,<duration>,<id1>,...`                       | `PATH_TRACKING_PTP_STARTED,<id1>,...` (followed by `PATH_COMPLETED,<id>` for each manipulator)        |
+| `START_PATH_CP,<duration>,<id1>,...`                        | `PATH_TRACKING_CP_STARTED,<id1>,...` (followed by `PATH_COMPLETED,<id>` for each manipulator)         |
+| *invalid or unknown request*                                | `ERROR,<code>,<message>`                                                                             |
 
 ---
 
@@ -137,6 +164,7 @@ ERROR, <code>, <message>
 1. Invoke `onCalcFK()`.
 2. Invoke `onCalcIK(...)` to get trajectory.
 3. Pack into payload:
+
 
    ```text
    PATH_DATA,
