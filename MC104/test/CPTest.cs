@@ -167,12 +167,12 @@ namespace SmoothTrajectoryTest
             Console.WriteLine("Starting PTP tracking...");
             Stopwatch sw = Stopwatch.StartNew();
 
-            controller.SetSpeedAll(BASE_SPEED_UM);
+            controller.SetSpeeds(BASE_SPEED_UM);
 
             for (int i = 0; i < trajectoryPoints.Count; i++)
             {
                 var point = trajectoryPoints[i];
-                controller.StartIncAbsAll(point.X, point.Y, point.Z);
+                controller.StartAbsAll(point.X, point.Y, point.Z);
                 await controller.Wait();
 
                 if (i % 10 == 0)
@@ -204,7 +204,7 @@ namespace SmoothTrajectoryTest
 
             // 1. 确保在起点
             var startPoint = trajectoryPoints[0];
-            controller.StartIncAbsAll(startPoint.X, startPoint.Y, startPoint.Z);
+            controller.StartAbsAll(startPoint.X, startPoint.Y, startPoint.Z);
             await controller.Wait();
 
             Console.WriteLine($"Starting from: ({startPoint.X:F1}, {startPoint.Y:F1}, {startPoint.Z:F1})");
@@ -243,16 +243,16 @@ namespace SmoothTrajectoryTest
             }
             else
             {
-                controller.SetSpeedAll(BASE_SPEED_UM);
+                controller.SetSpeeds(BASE_SPEED_UM);
             }
 
             // 5. 启动运动到终点
             Console.WriteLine($"Starting smooth motion to endpoint...");
 
             // 分别启动各轴，确保同时开始
-            controller.StartIncAbs(Microsupport.AXIS.X, endPoint.X);
-            controller.StartIncAbs(Microsupport.AXIS.Y, endPoint.Y);
-            controller.StartIncAbs(Microsupport.AXIS.Z, endPoint.Z);
+            controller.StartAbs(Microsupport.AXIS.X, endPoint.X);
+            controller.StartAbs(Microsupport.AXIS.Y, endPoint.Y);
+            controller.StartAbs(Microsupport.AXIS.Z, endPoint.Z);
 
             // 6. 在运动过程中动态调整速度
             isRunning = true;
@@ -390,7 +390,7 @@ namespace SmoothTrajectoryTest
     {
         public static async Task StartAbsAllAsync(this Microsupport controller, double x, double y, double z)
         {
-            await Task.Run(() => controller.StartIncAbsAll(x, y, z));
+            await Task.Run(() => controller.StartAbsAll(x, y, z));
         }
 
         public static uint HiSpeedOverride(this Microsupport controller, Microsupport.AXIS axis, double speedUm)

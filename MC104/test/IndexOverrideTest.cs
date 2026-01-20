@@ -134,8 +134,8 @@ namespace IndexOverrideTest
         /// </summary>
         static async Task Step(double x, double y, double z)
         {
-            controller.SetSpeedAll(BASE_SPEED_UM);
-            controller.StartIncAbsAll(x, y, z);
+            controller.SetSpeeds(BASE_SPEED_UM);
+            controller.StartAbsAll(x, y, z);
             await controller.Wait();
         }
 
@@ -182,7 +182,7 @@ namespace IndexOverrideTest
 
             /// 1. Configure linear acceleration mode
             /// Crucial: S-Curve mode causes vibrations during overrides. Linear mode is required.
-            controller.SetSpeedAll(BASE_SPEED_UM);
+            controller.SetSpeeds(BASE_SPEED_UM);
 
             /// 'chainStartPoint' acts as the reference origin for the current continuous move chain.
             /// It resets only when the motion fully stops and restarts.
@@ -325,7 +325,7 @@ namespace IndexOverrideTest
 
             controller.StartIncAll(Microsupport.DIRECTION.FORWARD, dx,
                 Microsupport.DIRECTION.FORWARD, dy,
-                Microsupport.DIRECTION.FORWARD, dz);
+                Microsupport.DIRECTION.FORWARD, dz, BASE_SPEED_UM);
 
             // Minimal yield to ensure command is flushed to the controller
             await Task.Delay(1);

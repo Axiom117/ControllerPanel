@@ -53,6 +53,7 @@ namespace MC104
         private const double RANGE_X = 20000; // Motion range of X axis (um)
         private const double RANGE_Y = 20000; // Motion range of Y axis (um)
         private const double RANGE_Z = 30000; // Motion range of Z axis (um)
+        private const double DURATION = 0.2;   // Duration for each movement segment (s)
 
         #endregion
 
@@ -436,7 +437,7 @@ namespace MC104
             {
                 if (Microsupport.controllers.ContainsKey(controllerId))
                 {
-                    Microsupport.controllers[controllerId].SetSpeedAll(speed);
+                    Microsupport.controllers[controllerId].SetSpeeds(speed);
                 }
             }
 
@@ -524,7 +525,7 @@ namespace MC104
             try
             {
                 /// Start with mock server if mockMode is true, otherwise start the real server
-                controllerServer = new ControllerServer(5000, mockMode: false);
+                controllerServer = new ControllerServer(5000);
                 controllerServer.OnClientConnection += LogMessage;
                 controllerServer.OnTrajectoryReceived += OnTrajectoryReceived;
 
@@ -899,15 +900,15 @@ namespace MC104
             /// Check which motion mode is selected
             if (cpModeButton.Checked)
             {
-                LogMessage("Starting Path Tracking in CP (Continuous Path) mode...");
+                LogMessage($"Starting Path Tracking in CP (Continuous Path) mode at segment duration = {DURATION} s...");
                 /// Start path tracking on the selected controllers in parallel CP mode.
-                _ = controllerServer.PathTrackingCP_Parallel(selectedControllers);
+                _ = controllerServer.PathTrackingCP_Parallel(selectedControllers, DURATION);
             }
             else if (ptpModeButton.Checked)
             {
-                LogMessage("Starting Path Tracking in PTP (Point-to-Point) mode...");
+                LogMessage($"Starting Path Tracking in CP (Continuous Path) mode at segment duration =  {DURATION} s...");
                 /// Start path tracking on the selected controllers in parallel PTP mode.
-                _ = controllerServer.PathTracking_Parallel(selectedControllers);
+                _ = controllerServer.PathTracking_Parallel(selectedControllers, DURATION);
             }
             else
             {

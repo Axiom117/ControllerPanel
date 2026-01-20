@@ -30,15 +30,11 @@ namespace MC104.server
         private Dictionary<string, List<TrajectoryPoint>> trajectoryData = new Dictionary<string, List<TrajectoryPoint>>();
         private Dictionary<string, bool> isPathReady = new Dictionary<string, bool>();
 
-        /// Mock mode for testing without real controllers
-        private bool useMockControllers = false;
-        private Dictionary<string, MockController> mockControllers = new Dictionary<string, MockController>();
-
         /// Configuration
         private readonly int localServerPort = 5000;
-        private const double BASE_SPEED_UM = 500;  // 2.5 mm/s
-        private const double OVERRIDE_DISTANCE_THRESHOLD = 400.0; // um
-
+        private const double SPEED_DEFAULT = 1000.0; // Default speed for movements
+        private const double OVERRIDE_PROGRESS_PERCENT = 0.85; // 85%
+        private const double DURATION = 0.2; // 200 ms
 
         /// Active client connections
         private List<TcpClient> activeClients = new List<TcpClient>();
@@ -53,46 +49,17 @@ namespace MC104.server
         /// TrajectoryPoint structure
         public struct TrajectoryPoint
         {
-            public double X, Y, Z;
+            public double X, Y, Z, Speed;
             public int Index;
-        }
-
-        /// Mock controller for testing
-        private class MockController
-        {
-            public double X { get; set; }
-            public double Y { get; set; }
-            public double Z { get; set; }
-            public string Id { get; set; }
-
-            public MockController(string id)
-            {
-                Id = id;
-                X = Y = Z = 0;
-            }
         }
 
         #endregion
 
         #region Server Start/Stop Methods
-        public ControllerServer(int port = 5000, bool mockMode = false)
+        public ControllerServer(int port = 5000)
         {
             localServerPort = port;
             server = new TcpListener(IPAddress.Any, localServerPort);
-            useMockControllers = mockMode;
-
-            if (useMockControllers)
-            {
-                // In mock mode, we can pre-define controllers that the server will manage.
-                var mockIds = new[] { "MC1", "MC2" };
-                foreach (var id in mockIds)
-                {
-                    mockControllers[id] = new MockController(id);
-                    isPathReady[id] = false;
-                    trajectoryData[id] = new List<TrajectoryPoint>();
-                }
-                NotifyClientConnection($"Using MOCK controllers for testing: {string.Join(", ", mockIds)}");
-            }
         }
 
         /// <summary>
@@ -308,98 +275,94 @@ namespace MC104.server
                         return "HEARTBEAT_OK\n";
 
                     case "GET_STATUS":
+                        /// Returned status format: STATUS, id1, x1, y1, z1, id2, x2, y2, z2, ...
                         if (parts.Length < 2)
                             return "ERROR, 101, Invalid parameters for GET_STATUS\n";
                         string[] ids = parts.Skip(1).ToArray();
                         return await SendStatus(ids);
 
                     case "START_STEP":
-                        // Parameters are groups of 4: id, x, y, z. Total params must be 1 (command) + n * 4.
-                        if (parts.Length < 5 || (parts.Length - 1) % 4 != 0)
+                        /// Parameters are groups of 5: [id, x, y, z, speed]. Total params must be 1 (command) + n * 5.
+                        if (parts.Length < 6 || (parts.Length - 1) % 5 != 0)
                             return "ERROR, 101, Invalid parameters for START_STEP\n";
 
-                        var moveTasks = new List<Task<string>>();
+                        var moveTasks = new List<Task>();
                         var controllerIds = new List<string>();
 
-                        for (int i = 1; i < parts.Length; i += 4)
+                        for (int i = 1; i < parts.Length; i += 5)
                         {
                             string id = parts[i];
+                            if (!Microsupport.controllers.ContainsKey(id))
+                                return $"ERROR, 102, Manipulator ID {id} not found\n";
+
                             double x = double.Parse(parts[i + 1]);
                             double y = double.Parse(parts[i + 2]);
                             double z = double.Parse(parts[i + 3]);
+                            double speed = double.Parse(parts[i + 4]);
+
+                            if (Math.Abs(x) > 20000 || Math.Abs(y) > 20000 || Math.Abs(z) > 30000)
+                                return "ERROR, 101, Movement out of bounds\n";
 
                             controllerIds.Add(id);
-                            moveTasks.Add(StepAbsFromCenter(id, x, y, z));
+                            var controller = Microsupport.controllers[id];
+                            moveTasks.Add(controller.StartAbsAllFromCenterAsync(x, y, z, speed));
                         }
 
-                        // Execute all moves in parallel
+                        /// Execute all moves in parallel and wait for completion
                         await Task.WhenAll(moveTasks);
-
-                        // Check results for any errors
-                        foreach (var task in moveTasks)
-                        {
-                            if (task.Result.StartsWith("ERROR"))
-                            {
-                                return task.Result; // Return the first error found
-                            }
-                        }
 
                         return $"STEP_COMPLETED, {string.Join(", ", controllerIds)}\n";
 
                     case "PATH_DATA":
+                        /// Request format: PATH_DATA, id, x1, y1, z1, x2, y2, z2, ...
                         if (parts.Length < 2)
                             return "ERROR, 101, Invalid parameters for PATH_DATA\n";
                         return ProcessPathData(parts[1], request);
 
-                    case "START_PATH":
-                        if (parts.Length < 2)
-                            return "ERROR, 101, Invalid parameters for START_PATH\n";
+                    case "START_PATH_PTP":
+                        /// Request format: START_PATH_PTP, duration, id1, id2, ...
+                        if (parts.Length < 3)
+                            return "ERROR, 101, Invalid parameters for START_PATH_PTP\n";
 
-                        string id_path = parts[1];
-                        /// Send immediate acknowledgment
-                        string ackResponse = $"PATH_TRACKING_STARTED, {id_path}\n";
+                        if (!double.TryParse(parts[1], out double ptpDuration))
+                            return "ERROR, 101, Invalid duration parameter for START_PATH_PTP\n";
+
+                        var ids_path_ptp = parts.Skip(2).ToList();
+                        /// Send immediate acknowledgment for all specified controllers
+                        string ackResponse = $"PATH_TRACKING_PTP_STARTED, {string.Join(", ", ids_path_ptp)}\n";
                         byte[] ackData = Encoding.UTF8.GetBytes(ackResponse);
                         await stream.WriteAsync(ackData, 0, ackData.Length);
                         await stream.FlushAsync();
                         NotifyClientConnection($"Controller Sent: {ackResponse.Trim()}");
 
-                        /// Start path tracking asynchronously
+                        /// Start parallel path tracking asynchronously
                         _ = Task.Run(async () =>
                         {
                             try
                             {
-                                /// Execute path tracking
-                                string result = await PathTracking(id_path);
-
-                                /// Check if stream is still valid before sending
-                                if (stream.CanWrite)
-                                {
-                                    byte[] resultData = Encoding.UTF8.GetBytes(result);
-                                    await stream.WriteAsync(resultData, 0, resultData.Length);
-                                    await stream.FlushAsync();
-                                    NotifyClientConnection($"Controller Sent: {result.Trim()}");
-                                }
+                                /// Execute parallel path tracking
+                                await PathTrackingPTP_Parallel(ids_path_ptp, ptpDuration, stream);
                             }
                             catch (Exception ex)
                             {
-                                if (stream.CanWrite)
-                                {
-                                    string errorResult = $"ERROR, 104, Path tracking exception: {ex.Message}\n";
-                                    byte[] errorData = Encoding.UTF8.GetBytes(errorResult);
-                                    await stream.WriteAsync(errorData, 0, errorData.Length);
-                                    await stream.FlushAsync();
-                                    NotifyClientConnection($"Controller Sent: {errorResult.Trim()}");
-                                }
+                                /// This top-level catch might be useful for aggregate errors,
+                                /// though individual errors are handled within PathTrackingPTP_Parallel.
+                                NotifyClientConnection($"[ERROR] An exception occurred during parallel PTP path execution: {ex.Message}");
                             }
                         });
 
                         /// Return empty string since we already sent the acknowledgment
                         return string.Empty;
+
                     case "START_PATH_CP":
-                        if (parts.Length < 2)
+                        /// Request format: START_PATH_CP, duration, id1, id2, ...
+                        if (parts.Length < 3)
                             return "ERROR, 101, Invalid parameters for START_PATH_CP\n";
 
-                        var ids_path_cp = parts.Skip(1).ToList();
+                        if (!double.TryParse(parts[1], out double cpDuration))
+                            return "ERROR, 101, Invalid duration parameter for START_PATH_CP\n";
+
+                        var ids_path_cp = parts.Skip(2).ToList();
                         /// Send immediate acknowledgment for all specified controllers
                         string ackResponseCP = $"PATH_TRACKING_CP_STARTED, {string.Join(", ", ids_path_cp)}\n";
                         byte[] ackDataCP = Encoding.UTF8.GetBytes(ackResponseCP);
@@ -413,17 +376,12 @@ namespace MC104.server
                             try
                             {
                                 /// Execute parallel path tracking
-                                await PathTrackingCP_Parallel(ids_path_cp);
-
-                                /// After all parallel tasks are complete, we could send a final confirmation.
-                                /// However, PathTrackingCP_Parallel already logs completion for each controller.
-                                /// The API specifies PATH_COMPLETED is sent per controller inside PathTrackingCP.
-                                /// If a collective notification is needed, it can be added here.
+                                await PathTrackingCP_Parallel(ids_path_cp, cpDuration, stream);
                             }
                             catch (Exception ex)
                             {
-                                // This top-level catch might be useful for aggregate errors,
-                                // though individual errors are handled within PathTrackingCP.
+                                /// This top-level catch might be useful for aggregate errors,
+                                /// though individual errors are handled within PathTrackingCP.
                                 NotifyClientConnection($"[ERROR] An exception occurred during parallel CP path execution: {ex.Message}");
                             }
                         });
@@ -455,35 +413,17 @@ namespace MC104.server
                 {
                     double x = 0, y = 0, z = 0;
 
-                    if (useMockControllers)
+                    if (Microsupport.controllers.ContainsKey(id))
                     {
-                        if (mockControllers.ContainsKey(id))
-                        {
-                            var controller = mockControllers[id];
-                            x = controller.X;
-                            y = controller.Y;
-                            z = controller.Z;
-                            NotifyClientConnection($"[MOCK] Status for {id}: X={x:F2}, Y={y:F2}, Z={z:F2}");
-                        }
-                        else
-                        {
-                            return $"ERROR, 102, Manipulator ID {id} not found\n";
-                        }
+                        var controller = Microsupport.controllers[id];
+                        var pos = await Task.Run(() => controller.GetPositionsFromCenter());
+                        x = pos[0];
+                        y = pos[1];
+                        z = pos[2];
                     }
                     else
                     {
-                        if (Microsupport.controllers.ContainsKey(id))
-                        {
-                            var controller = Microsupport.controllers[id];
-                            var pos = await Task.Run(() => controller.GetPositionsFromCenter());
-                            x = pos[0];
-                            y = pos[1];
-                            z = pos[2];
-                        }
-                        else
-                        {
-                            return $"ERROR, 102, Manipulator ID {id} not found\n";
-                        }
+                        return $"ERROR, 102, Manipulator ID {id} not found\n";
                     }
                     statusParts.Add(id);
                     statusParts.Add($"{x:F2}");
@@ -500,67 +440,13 @@ namespace MC104.server
         }
 
         /// <summary>
-        /// StepAbsFromCenter - Perform absolute move for a single controller
-        /// </summary>
-        private async Task<string> StepAbsFromCenter(string id, double x, double y, double z)
-        {
-            try
-            {
-                /// Validate bounds (example: XY: ±20000um, Z: ±30000um)
-                if (Math.Abs(x) > 20000 || Math.Abs(y) > 20000 || Math.Abs(z) > 30000)
-                {
-                    return "ERROR, 101, Movement out of bounds\n";
-                }
-
-                if (useMockControllers)
-                {
-                    if (mockControllers.ContainsKey(id))
-                    {
-                        var controller = mockControllers[id];
-                        controller.X = x;
-                        controller.Y = y;
-                        controller.Z = z;
-
-                        NotifyClientConnection($"[MOCK] Absolute move {id}: X={x:F2}, Y={y:F2}, Z={z:F2}.");
-
-                        /// Simulate movement time
-                        await Task.Delay(10);
-                    }
-                    else
-                    {
-                        return $"ERROR, 102, Manipulator ID {id} not found\n";
-                    }
-                }
-                else
-                {
-                    if (Microsupport.controllers.ContainsKey(id))
-                    {
-                        var controller = Microsupport.controllers[id];
-                        await controller.StartAbsAllFromCenterAsync(x, y, z);
-                    }
-                    else
-                    {
-                        return $"ERROR, 102, Manipulator ID {id} not found\n";
-                    }
-                }
-
-                /// After successful move, send completion status
-                return $"STEP_COMPLETED, {id}\n";
-            }
-            catch (Exception ex)
-            {
-                return $"ERROR, 104, Motion execution failure: {ex.Message}\n";
-            }
-        }
-
-        /// <summary>
         /// ProcessPathData - Parse and store trajectory data for a specific controller
         /// </summary>
         private string ProcessPathData(string controllerId, string rawData)
         {
             try
             {
-                // Command is "PATH_DATA", controllerId is at index 1, payload starts after that.
+                /// Command is "PATH_DATA", controllerId is at index 1, payload starts after that.
                 int firstComma = rawData.IndexOf(',');
                 int secondComma = rawData.IndexOf(',', firstComma + 1);
                 if (secondComma == -1)
@@ -617,12 +503,14 @@ namespace MC104.server
                                      .ToArray();
 
             /// Validate at least trajectory data are present
-            if (values.Length < 3)
-                throw new FormatException("PATH_DATA must include at least one trajectory point (3 values).");
+            if (values.Length < 3) // At least one point (X,Y,Z)
+                throw new FormatException("PATH_DATA must include at least one trajectory point.");
 
-            /// Validate: must be groups of 3 floats
+            /// Data must be in groups of 3 (X,Y,Z)
             if (values.Length % 3 != 0)
-                throw new FormatException("Trajectory data must contain groups of 3 values.");
+                throw new FormatException("Trajectory data must contain groups of 3 values (X, Y, Z).");
+
+            const int pointValueCount = 3;
 
             /// Parse trajectory points, use lockObject for thread safety
             lock (lockObject)
@@ -633,11 +521,11 @@ namespace MC104.server
                 }
                 trajectoryData[controllerId].Clear();
 
-                int numPoints = values.Length / 3;
+                int numPoints = values.Length / pointValueCount;
 
                 for (int i = 0; i < numPoints; i++)
                 {
-                    int idx = i * 3;
+                    int idx = i * pointValueCount;
                     TrajectoryPoint point = new TrajectoryPoint
                     {
                         X = double.Parse(values[idx]),
@@ -657,9 +545,9 @@ namespace MC104.server
         }
 
         /// <summary>
-        /// PathTracking - Execute stored trajectory for a single controller
+        /// PathTracking - Execute stored trajectory for a single controller using duration-based segments.
         /// </summary>
-        public async Task<string> PathTracking(string id)
+        public async Task<string> PathTrackingPTP(string id, double duration)
         {
             if (!isPathReady.ContainsKey(id) || !isPathReady[id])
                 return $"ERROR, 104, No path data ready for execution for {id}\n";
@@ -668,11 +556,7 @@ namespace MC104.server
             {
                 NotifyClientConnection($"Starting path tracking for {id}...");
 
-                if (!useMockControllers)
-                {
-                    var controller = Microsupport.controllers[id];
-                    controller.SetSpeedAll(500);
-                }
+                var controller = Microsupport.controllers[id];
 
                 /// Copy trajectory data locally to avoid locking during execution
                 List<TrajectoryPoint> pointsToExecute;
@@ -681,19 +565,30 @@ namespace MC104.server
                     pointsToExecute = new List<TrajectoryPoint>(trajectoryData[id]);
                 }
 
-                foreach (var point in pointsToExecute)
+                if (pointsToExecute.Count < 2)
                 {
-                    /// Move manipulator to absolute positions from center
-                    string result = await StepAbsFromCenter(id, point.X, point.Y, point.Z);
-                    if (result.StartsWith("ERROR"))
-                    {
-                        isPathReady[id] = false;
-                        return result;
-                    }
+                    NotifyClientConnection($"Path for {id} has less than 2 points. Nothing to execute.");
+                    return $"PATH_COMPLETED, {id}\n";
+                }
+
+                // Move to the start point before beginning segmented moves
+                var startPoint = pointsToExecute[0];
+                NotifyClientConnection($"[Controller {id}] Moving to start point ({startPoint.X:F1}, {startPoint.Y:F1}, {startPoint.Z:F1})...");
+                await controller.StartAbsAllFromCenterAsync(startPoint.X, startPoint.Y, startPoint.Z, SPEED_DEFAULT);
+
+
+                /// Execute trajectory segment by segment
+                for (int i = 0; i < pointsToExecute.Count - 1; i++)
+                {
+                    var currentPoint = pointsToExecute[i];
+                    var nextPoint = pointsToExecute[i + 1];
+
+                    /// Start the segment move and wait for it to complete
+                    await StartSegmentSync(controller, currentPoint, nextPoint, duration);
+                    await controller.Wait();
 
                     /// Progress notification
-                    if (point.Index % 10 == 0)
-                        NotifyClientConnection($"Path progress for {id}: {point.Index + 1}/{pointsToExecute.Count}");
+                    NotifyClientConnection($"Path progress for {id}: {i + 1}/{pointsToExecute.Count - 1} segments completed.");
                 }
 
                 isPathReady[id] = false; // Path consumed
@@ -711,39 +606,44 @@ namespace MC104.server
         /// <summary>
         /// Executes a stored trajectory using Point-to-Point (PTP) motion for multiple controllers in parallel.
         /// </summary>
-        public async Task PathTracking_Parallel(List<string> ids)
+        public async Task PathTrackingPTP_Parallel(List<string> ids, double duration, NetworkStream stream)
         {
-            var trackingTasks = new List<Task<string>>();
+            var trackingTasks = new List<Task>();
 
             foreach (var id in ids)
             {
-                trackingTasks.Add(Task.Run(() => PathTracking(id)));
+                trackingTasks.Add(Task.Run(async () =>
+                {
+                    string result = await PathTrackingPTP(id, duration);
+                    NotifyClientConnection($"Parallel PTP execution result for {id}: {result.Trim()}");
+
+                    if (stream != null && stream.CanWrite)
+                    {
+                        try
+                        {
+                            byte[] resultData = Encoding.UTF8.GetBytes(result);
+                            await stream.WriteAsync(resultData, 0, resultData.Length);
+                            await stream.FlushAsync();
+                            NotifyClientConnection($"Controller Sent: {result.Trim()}");
+                        }
+                        catch (Exception ex)
+                        {
+                            NotifyClientConnection($"Failed to send parallel PTP result for {id}: {ex.Message}");
+                        }
+                    }
+                }));
             }
 
-            // Wait for all path tracking tasks to complete.
-            var results = await Task.WhenAll(trackingTasks);
-
-            // Log the results for each controller.
-            for (int i = 0; i < ids.Count; i++)
-            {
-                NotifyClientConnection($"Parallel PTP execution result for {ids[i]}: {results[i].Trim()}");
-            }
+            await Task.WhenAll(trackingTasks);
         }
 
         /// <summary>
-        /// Executes a stored trajectory using Continuous Path (CP) motion with index override.
+        /// Executes a high-precision continuous path (CP) motion for the specified controller identifier.
         /// </summary>
-        public async Task<string> PathTrackingCP(string id)
+        public async Task<string> PathTrackingCP(string id, double duration)
         {
             if (!isPathReady.ContainsKey(id) || !isPathReady[id])
                 return $"ERROR, 104, No path data ready for execution for {id}\n";
-
-            // In mock mode, fall back to simple PTP tracking as CP logic is hardware-dependent.
-            if (useMockControllers)
-            {
-                NotifyClientConnection($"[MOCK] CP mode not supported, falling back to standard PTP for {id}.");
-                return await PathTracking(id);
-            }
 
             try
             {
@@ -761,28 +661,20 @@ namespace MC104.server
                     return $"ERROR, 104, Not enough points for CP trajectory for {id}.\n";
                 }
 
-                // Move to the first point of the trajectory before starting CP motion.
+                /// Move to the first point of the trajectory before starting CP motion.
                 var startPoint = trajectoryPoints[0];
-                NotifyClientConnection($"[CP] Moving to start point ({startPoint.X:F1}, {startPoint.Y:F1}, {startPoint.Z:F1}) for {id}...");
-                string preMoveResult = await StepAbsFromCenter(id, startPoint.X, startPoint.Y, startPoint.Z);
-                if (preMoveResult.StartsWith("ERROR"))
-                {
-                    NotifyClientConnection($"[CP] ERROR: Failed to move to start point for {id}. Aborting.");
-                    return preMoveResult;
-                }
-                NotifyClientConnection($"[CP] Now at start point for {id}.");
+                NotifyClientConnection($"[Controller {id}] Moving to start point ({startPoint.X:F1}, {startPoint.Y:F1}, {startPoint.Z:F1})...");
+                await controller.StartAbsAllFromCenterAsync(startPoint.X, startPoint.Y, startPoint.Z, SPEED_DEFAULT);
 
-                // 1. Configure speed and ensure axes are homed and ready.
-                controller.SetSpeedAll(BASE_SPEED_UM);
-
-                // 'chainStartPoint' acts as the reference origin for the current continuous move chain.
+                /// 'chainStartPoint' acts as the reference origin for the current continuous move chain.
                 TrajectoryPoint chainStartPoint = trajectoryPoints[0];
 
-                // 2. Start the initial segment (P0 -> P1).
-                NotifyClientConnection($"[CP] Starting initial segment (Point 0 -> Point 1) for {id}...");
-                await StartSegmentSync(controller, trajectoryPoints[0], trajectoryPoints[1]);
+                /// Start the initial segment (P0 -> P1).
+                NotifyClientConnection($"[Controller {id}] Starting initial segment (Point 0 -> Point 1)...");
 
-                // 3. Iterate through subsequent segments.
+                await StartSegmentSync(controller, trajectoryPoints[0], trajectoryPoints[1], duration);
+
+                /// Iterate through subsequent segments.
                 for (int i = 1; i < trajectoryPoints.Count - 1; i++)
                 {
                     var currentTarget = trajectoryPoints[i];
@@ -793,29 +685,29 @@ namespace MC104.server
 
                     if (isContinuous)
                     {
-                        bool overrideSuccess = await WaitForOverrideWindowAndExecute_HighFreq(controller, currentTarget, nextTarget, chainStartPoint);
+                        bool overrideSuccess = await WaitForOverrideWindowAndExecute_ByTime(id, controller, currentTarget, nextTarget, chainStartPoint, duration);
                         if (!overrideSuccess)
                         {
-                            NotifyClientConnection($"[CP] WARNING: Missed override window at Point {i} for {id}. Resyncing...");
+                            NotifyClientConnection($"[Controller {id}] WARNING: Missed override window at Point {i} for {id}. Resyncing...");
                             await controller.Wait();
                             chainStartPoint = currentTarget;
-                            await StartSegmentSync(controller, currentTarget, nextTarget);
+                            await StartSegmentSync(controller, currentTarget, nextTarget, duration);
                         }
                     }
                     else
                     {
-                        NotifyClientConnection($"[CP] Segment {i}->{i + 1}: Discontinuous. Stopping at Point {i} for {id}.");
+                        NotifyClientConnection($"[Controller {id}] Segment {i}->{i + 1}: Discontinuous. Stopping at Point {i}.");
                         await controller.Wait();
                         chainStartPoint = currentTarget;
-                        await StartSegmentSync(controller, currentTarget, nextTarget);
+                        await StartSegmentSync(controller, currentTarget, nextTarget, duration);
                     }
                 }
 
-                // Wait for the final segment to complete.
+                /// Wait for the final segment to complete.
                 await controller.Wait();
 
                 double[] finalPos = controller.GetPositionsFromCenter();
-                NotifyClientConnection($"[CP] Motion Complete for {id}. Final Pos: ({finalPos[0]:F1}, {finalPos[1]:F1}, {finalPos[2]:F1}).");
+                NotifyClientConnection($"[Controller {id}] Motion Complete. Final Pos: ({finalPos[0]:F1}, {finalPos[1]:F1}, {finalPos[2]:F1}).");
 
                 isPathReady[id] = false; // Path consumed
                 return $"PATH_COMPLETED, {id}\n";
@@ -830,26 +722,35 @@ namespace MC104.server
         /// <summary>
         /// Executes a stored trajectory using Continuous Path (CP) motion for multiple controllers in parallel.
         /// </summary>
-        public async Task PathTrackingCP_Parallel(List<string> ids)
+        public async Task PathTrackingCP_Parallel(List<string> ids, double duration, NetworkStream stream)
         {
-            var trackingTasks = new List<Task<string>>();
+            var trackingTasks = new List<Task>();
 
             foreach (var id in ids)
             {
-                // For each controller, create a new task to run its path tracking logic.
-                // This ensures each controller's logic runs on a separate thread from the thread pool,
-                // allowing true parallel execution.
-                trackingTasks.Add(Task.Run(() => PathTrackingCP(id)));
+                trackingTasks.Add(Task.Run(async () =>
+                {
+                    string result = await PathTrackingCP(id, duration);
+                    NotifyClientConnection($"Parallel CP execution result for {id}: {result.Trim()}");
+
+                    if (stream != null && stream.CanWrite)
+                    {
+                        try
+                        {
+                            byte[] resultData = Encoding.UTF8.GetBytes(result);
+                            await stream.WriteAsync(resultData, 0, resultData.Length);
+                            await stream.FlushAsync();
+                            NotifyClientConnection($"Controller Sent: {result.Trim()}");
+                        }
+                        catch (Exception ex)
+                        {
+                            NotifyClientConnection($"Failed to send parallel CP result for {id}: {ex.Message}");
+                        }
+                    }
+                }));
             }
 
-            // Wait for all path tracking tasks to complete.
-            var results = await Task.WhenAll(trackingTasks);
-
-            // Log the results for each controller.
-            for (int i = 0; i < ids.Count; i++)
-            {
-                NotifyClientConnection($"Parallel execution result for {ids[i]}: {results[i].Trim()}");
-            }
+            await Task.WhenAll(trackingTasks);
         }
 
         #endregion
@@ -877,60 +778,23 @@ namespace MC104.server
         }
 
         /// <summary>
-        /// Calculates and applies speed overrides for each axis based on displacement, but only if the speed differences are significant.
-        /// </summary>
-        static void AdjustSpeeds(Microsupport controller, double dx, double dy, double dz)
-        {
-            const double MIN_SPEED_UM = 100.0;
-            const double SPEED_CHANGE_THRESHOLD = 0.10; // 10%
-
-            double maxDisplacement = Math.Max(Math.Abs(dx), Math.Max(Math.Abs(dy), Math.Abs(dz)));
-            if (maxDisplacement < 1e-6) return; // No movement
-
-            // Calculate new target speeds
-            double targetSpeedX = BASE_SPEED_UM * (Math.Abs(dx) / maxDisplacement);
-            double targetSpeedY = BASE_SPEED_UM * (Math.Abs(dy) / maxDisplacement);
-            double targetSpeedZ = BASE_SPEED_UM * (Math.Abs(dz) / maxDisplacement);
-
-            // Get current speeds from the controller
-            double currentSpeedX = controller.GetSpeed(Microsupport.AXIS.X);
-            double currentSpeedY = controller.GetSpeed(Microsupport.AXIS.Y);
-            double currentSpeedZ = controller.GetSpeed(Microsupport.AXIS.Z);
-
-            // Check each axis individually
-            bool needsUpdateX = Math.Abs(targetSpeedX - currentSpeedX) > currentSpeedX * SPEED_CHANGE_THRESHOLD;
-            bool needsUpdateY = Math.Abs(targetSpeedY - currentSpeedY) > currentSpeedY * SPEED_CHANGE_THRESHOLD;
-            bool needsUpdateZ = Math.Abs(targetSpeedZ - currentSpeedZ) > currentSpeedZ * SPEED_CHANGE_THRESHOLD;
-
-            if (needsUpdateX || needsUpdateY || needsUpdateZ)
-            {
-                Console.WriteLine($"[CP] Speeds adjusted for next segment: X={targetSpeedX:F0}, Y={targetSpeedY:F0}, Z={targetSpeedZ:F0} um/s");
-                if (Math.Abs(dx) > 1e-6) controller.SpeedOverride(Microsupport.AXIS.X, (uint)Math.Max(targetSpeedX, MIN_SPEED_UM));
-                if (Math.Abs(dy) > 1e-6) controller.SpeedOverride(Microsupport.AXIS.Y, (uint)Math.Max(targetSpeedY, MIN_SPEED_UM));
-                if (Math.Abs(dz) > 1e-6) controller.SpeedOverride(Microsupport.AXIS.Z, (uint)Math.Max(targetSpeedZ, MIN_SPEED_UM));
-            }
-            else
-            {
-                Console.WriteLine($"[CP] Speed differences are within {SPEED_CHANGE_THRESHOLD:P0}, skipping override.");
-            }
-        }
-
-        /// <summary>
         /// Starts a synchronized movement for all axes.
         /// </summary>
-        private async Task StartSegmentSync(Microsupport controller, TrajectoryPoint start, TrajectoryPoint end)
+        private async Task StartSegmentSync(Microsupport controller, TrajectoryPoint start, TrajectoryPoint end, double duration)
         {
             double dx = end.X - start.X;
             double dy = end.Y - start.Y;
             double dz = end.Z - start.Z;
-
-            AdjustSpeeds(controller, dx, dy, dz);
 
             /// Determine directions based on displacement signs
             var xDir = dx >= 0 ? Microsupport.DIRECTION.FORWARD : Microsupport.DIRECTION.REVERSE;
             var yDir = dy >= 0 ? Microsupport.DIRECTION.FORWARD : Microsupport.DIRECTION.REVERSE;
             var zDir = dz >= 0 ? Microsupport.DIRECTION.REVERSE : Microsupport.DIRECTION.FORWARD; // Note: Z axis direction is inverted considering the physical setup of Microsupport
 
+            /// Adjust speeds for synchronized movement over the specified duration
+            controller.AdjustSpeeds(Math.Abs(dx), Math.Abs(dy), Math.Abs(dz), duration);
+
+            /// Start incremental movement on all axes
             controller.StartIncAll(xDir, Math.Abs(dx),
                                    yDir, Math.Abs(dy),
                                    zDir, Math.Abs(dz));
@@ -939,12 +803,41 @@ namespace MC104.server
         }
 
         /// <summary>
-        /// High-frequency polling loop to trigger IndexOverride.
+        /// Waits for a calculated time window and then executes the IndexOverride using a time-based approach.
         /// </summary>
-        private async Task<bool> WaitForOverrideWindowAndExecute_HighFreq(Microsupport controller, TrajectoryPoint currentTarget, TrajectoryPoint nextTarget, TrajectoryPoint chainStart)
+        private async Task<bool> WaitForOverrideWindowAndExecute_ByTime(string id, Microsupport controller, TrajectoryPoint currentTarget, TrajectoryPoint nextTarget, TrajectoryPoint chainStart, double duration)
         {
-            Stopwatch safetyTimer = Stopwatch.StartNew();
-            long timeoutLimit = 2000; // 2 seconds safety limit
+            double segmentDurationMs = duration * 1000;
+            if (segmentDurationMs <= 0) return false;
+
+            Stopwatch segmentTimer = Stopwatch.StartNew();
+            double waitDurationMs = segmentDurationMs * OVERRIDE_PROGRESS_PERCENT;
+
+            if (!controller.IsBusy())
+            {
+                NotifyClientConnection($"[Controller {id}] Error: Controller is not busy at the start of time-based wait. Aborting override.");
+                return false;
+            }
+
+            const int marginMs = 10;
+            int delayMs = (int)(waitDurationMs - marginMs);
+            if (delayMs > 0)
+            {
+                await Task.Delay(delayMs);
+            }
+
+            while (segmentTimer.Elapsed.TotalMilliseconds < waitDurationMs)
+            {
+                Thread.SpinWait(1);
+            }
+
+            if (!controller.IsBusy())
+            {
+                NotifyClientConnection($"[Controller {id}] WARNING: Missed override window for Point {nextTarget.Index}. Controller stopped before override time was reached.");
+                return false;
+            }
+
+            NotifyClientConnection($"[Controller {id}] Override window reached at {segmentTimer.Elapsed.TotalMilliseconds:F1}ms. Executing Override to Point {nextTarget.Index} ({nextTarget.X:F1}, {nextTarget.Y:F1}, {nextTarget.Z:F1})");
 
             double totalDistX = Math.Abs(nextTarget.X - chainStart.X);
             double totalDistY = Math.Abs(nextTarget.Y - chainStart.Y);
@@ -954,47 +847,23 @@ namespace MC104.server
             uint pulseY = (uint)controller.Um2enc(Microsupport.AXIS.Y, totalDistY);
             uint pulseZ = (uint)controller.Um2enc(Microsupport.AXIS.Z, totalDistZ);
 
-            double thresholdSq = OVERRIDE_DISTANCE_THRESHOLD * OVERRIDE_DISTANCE_THRESHOLD;
+            double next_dx = nextTarget.X - currentTarget.X;
+            double next_dy = nextTarget.Y - currentTarget.Y;
+            double next_dz = nextTarget.Z - currentTarget.Z;
 
-            while (controller.IsBusy())
-            {
-                if (safetyTimer.ElapsedMilliseconds > timeoutLimit) return false;
+            controller.AdjustSpeeds(next_dx, next_dy, next_dz, duration);
 
-                double[] currentPos = controller.GetPositionsFromCenter();
-                double dx = currentTarget.X - currentPos[0];
-                double dy = currentTarget.Y - currentPos[1];
-                double dz = currentTarget.Z - currentPos[2];
-                double distSq = dx * dx + dy * dy + dz * dz;
+            if (Math.Abs(next_dx) > 0.001) controller.IndexOverride(Microsupport.AXIS.X, pulseX);
+            if (Math.Abs(next_dy) > 0.001) controller.IndexOverride(Microsupport.AXIS.Y, pulseY);
+            if (Math.Abs(next_dz) > 0.001) controller.IndexOverride(Microsupport.AXIS.Z, pulseZ);
 
-                if (distSq <= thresholdSq)
-                {
-                    NotifyClientConnection($"[CP] Override Window Reached. Executing Override to ({nextTarget.X}, {nextTarget.Y}, {nextTarget.Z})");
-
-                    double next_dx = nextTarget.X - currentTarget.X;
-                    double next_dy = nextTarget.Y - currentTarget.Y;
-                    double next_dz = nextTarget.Z - currentTarget.Z;
-
-                    AdjustSpeeds(controller, next_dx, next_dy, next_dz);
-
-                    if (Math.Abs(next_dx) > 0.001) controller.IndexOverride(Microsupport.AXIS.X, pulseX);
-                    if (Math.Abs(next_dy) > 0.001) controller.IndexOverride(Microsupport.AXIS.Y, pulseY);
-                    if (Math.Abs(next_dz) > 0.001) controller.IndexOverride(Microsupport.AXIS.Z, pulseZ);
-
-                    return true;
-                }
-
-                NotifyClientConnection($"[CP] Waiting for Override Window. Current Position: ({currentPos[0]:F1}, {currentPos[1]:F1}, {currentPos[2]:F1})");
-
-                Thread.SpinWait(1);
-            }
-
-            return false; // Controller stopped before threshold was reached
+            return true;
         }
 
 
         #endregion
 
-        #region Helper Methods
+        #region Server Helper Methods
         private void NotifyClientConnection(string message)
         {
             string timestampedMessage = $"[{DateTime.Now:HH:mm:ss}] {message}";

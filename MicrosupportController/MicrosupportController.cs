@@ -123,9 +123,6 @@ namespace MicrosupportController
 
         private string comment = "";
 
-        private int accelerationTimeMs = 100; // Acceleration time in milliseconds for each axis.
-        private bool isSmoothingEnabled = false; // Flag to enable or disable smoothing.
-
         #endregion
 
         #region Class constructors and utilities
@@ -322,9 +319,9 @@ namespace MicrosupportController
             double centerY = RANGE_Y / 2;
             double centerZ = RANGE_Z / 2;
             /// Move each axis to its center position.
-            StartIncAbs(AXIS.X, centerX);
-            StartIncAbs(AXIS.Y, centerY);
-            StartIncAbs(AXIS.Z, centerZ);
+            StartAbs(AXIS.X, centerX);
+            StartAbs(AXIS.Y, centerY);
+            StartAbs(AXIS.Z, centerZ);
 
             /// Wait for the centering process to complete.
             while (IsBusy())
@@ -502,15 +499,18 @@ namespace MicrosupportController
                 speedData.dwHighSpeed = (uint)Math.Abs(speed / irange);
 
                 /// dwLowSpeed: min target speed (in PPS)
-                uint lowSpeedData = (uint)(speedData.dwHighSpeed * 0.20); // 20% of max speed
-                speedData.dwLowSpeed = lowSpeedData;
-                //  speedData.dwLowSpeed = (uint)Math.Abs(1000 / irange);
+                speedData.dwLowSpeed = (uint)(speedData.dwHighSpeed * 0.10); // 20% of max speedd
 
                 /// Safety check: ensures that the max speed is not lower than the min speed.
                 if (speedData.dwHighSpeed < speedData.dwLowSpeed)
                     speedData.dwHighSpeed = speedData.dwLowSpeed;
 
-                speedData.dwRate = new uint[] { 10, 8191, 8191 }; // Acceleration rate for each segment of motion (multi-stage ramp-up).
+                uint baseRate = 10; // Base rate for acceleration calculation.
+                uint dynamicRate = (uint)(baseRate / (speed / (double)MAX_SPEED)); // Dynamic rate based on desired speed.
+
+                if (dynamicRate < baseRate) dynamicRate = 10;
+
+                speedData.dwRate = new uint[] { dynamicRate, 8191, 8191 }; // Acceleration rate for each segment of motion (multi-stage ramp-up).
                 speedData.dwRateChgPnt = new uint[] { 8191, 8191 }; // Points where the rate changes. Use 8191 means a simple trapezoidal drive.
 
                 /// Compute S-curve weighting factor based on speed difference.
@@ -580,8 +580,8 @@ namespace MicrosupportController
                 uint result = Hpmcstd.McsdGetSpeed(hController, axisCode, out speedData);
                 if (result == Hpmcstd.MCSD_ERROR_SUCCESS)
                 {
-                    // Reconstruct the speed in pps from the returned data.
-                    // This logic is the reverse of what's in SetSpeedEnc.
+                    /// Reconstruct the speed in pps from the returned data.
+                    /// This logic is the reverse of what's in SetSpeedEnc.
                     int irange = (speedData.dwRange == 10) ? 100 : 10;
                     return (int)(speedData.dwHighSpeed * irange);
                 }
@@ -601,7 +601,7 @@ namespace MicrosupportController
         /// <summary>
         /// Sets the movement speed for all axes to the specified value.
         /// </summary>
-        public uint SetSpeedAll(double speed = SPEED_DEFAULT)
+        public uint SetSpeeds(double speed = SPEED_DEFAULT)
         {
             uint[] results = new uint[3];
 
@@ -619,6 +619,27 @@ namespace MicrosupportController
             }
 
             return Hpmcstd.MCSD_ERROR_SUCCESS;
+        }
+
+        /// <summary>
+        /// Calculates and applies speed overrides for each axis based on displacement to ensure synchronized movement over a given duration.
+        /// </summary>
+        public void AdjustSpeeds(double dx, double dy, double dz, double duration)
+        {
+            const double MIN_SPEED_UM = 50.0;
+
+            if (duration <= 0) return; // Avoid division by zero
+
+            /// Calculate required speed for each axis (Speed = Distance / Time)
+            double targetSpeedX = Math.Abs(dx) / duration;
+            double targetSpeedY = Math.Abs(dy) / duration;
+            double targetSpeedZ = Math.Abs(dz) / duration;
+
+            /// Apply speed overrides to each axis
+            Console.WriteLine($"[CP] Speeds adjusted for next segment: X={targetSpeedX:F0}, Y={targetSpeedY:F0}, Z={targetSpeedZ:F0} um/s for {duration:F2}s");
+            if (Math.Abs(dx) > 1e-6) this.SpeedOverride(Microsupport.AXIS.X, (uint)Math.Max(targetSpeedX, MIN_SPEED_UM));
+            if (Math.Abs(dy) > 1e-6) this.SpeedOverride(Microsupport.AXIS.Y, (uint)Math.Max(targetSpeedY, MIN_SPEED_UM));
+            if (Math.Abs(dz) > 1e-6) this.SpeedOverride(Microsupport.AXIS.Z, (uint)Math.Max(targetSpeedZ, MIN_SPEED_UM));
         }
 
         /// <summary>
@@ -760,26 +781,36 @@ namespace MicrosupportController
             return StartIncEnc(axis, direction, distance);
         }
 
+        /// <summary>
+        /// Starts incremental movement on all three axes (X, Y, and Z) with the specified directions and distances, synchronized to complete in a given duration.
+        /// </summary>
         public uint StartIncAll(DIRECTION xDir, double xUm,
                                     DIRECTION yDir, double yUm,
                                     DIRECTION zDir, double zUm)
         {
+            if (!this.IsValid) return Hpmcstd.MCSD_ERROR_NO_DEVICE;
+
+            /// Determine the maximum displacement among the three axes.
+            double maxDisplacement = Math.Max(Math.Abs(xUm), Math.Max(Math.Abs(yUm), Math.Abs(zUm)));
+            if (maxDisplacement < 1e-6) return Hpmcstd.MCSD_ERROR_SUCCESS; // No movement
+
+            /// Start movement for all axes
             uint resX = StartInc(AXIS.X, xDir, xUm);
+            if (resX != Hpmcstd.MCSD_ERROR_SUCCESS) return resX;
+
             uint resY = StartInc(AXIS.Y, yDir, yUm);
+            if (resY != Hpmcstd.MCSD_ERROR_SUCCESS) return resY;
+
             uint resZ = StartInc(AXIS.Z, zDir, zUm);
-            if (resX != Hpmcstd.MCSD_ERROR_SUCCESS)
-                return resX;
-            if (resY != Hpmcstd.MCSD_ERROR_SUCCESS)
-                return resY;
-            if (resZ != Hpmcstd.MCSD_ERROR_SUCCESS)
-                return resZ;
+            if (resZ != Hpmcstd.MCSD_ERROR_SUCCESS) return resZ;
+
             return Hpmcstd.MCSD_ERROR_SUCCESS;
         }
 
         /// <summary>
         /// Starts the absolute encoder movement for the specified axis to reach the target position. Note that GetPosition() is used as the reference point.
         /// </summary>
-        public uint StartIncAbsEnc(AXIS axis, int targetPosition)
+        public uint StartAbsEnc(AXIS axis, int targetPosition)
         {
             if (this.IsValid)
             {
@@ -816,127 +847,55 @@ namespace MicrosupportController
         /// <summary>
         /// Starts an absolute movement of the specified axis to the given position in micrometer.
         /// </summary>
-        public uint StartIncAbs(AXIS axis, double targetPosition)
+        public uint StartAbs(AXIS axis, double targetPosition)
         {
             int posEnc = Um2enc(axis, targetPosition);
-            return StartIncAbsEnc(axis, posEnc);
+            return StartAbsEnc(axis, posEnc);
         }
 
         /// <summary>
         /// Moves the X, Y, and Z axes to the specified absolute positions.
         /// </summary>
-        public void StartIncAbsAll(double XTarget, double YTarget, double ZTarget)
+        public void StartAbsAll(double XTarget, double YTarget, double ZTarget, double speed)
         {
             if (!this.IsValid) return;
 
-            _ = StartIncAbs(AXIS.X, XTarget);
-            _ = StartIncAbs(AXIS.Y, YTarget);
-            _ = StartIncAbs(AXIS.Z, ZTarget);
-        }
+            double[] currentPositions = GetPositions();
+            if (currentPositions == null) return;
 
-        public void StartAbsFromCenter(AXIS axis, double position)
-        {
-            switch (axis)
-            {
-                case AXIS.X:
-                    StartIncAbs(AXIS.X, position + RANGE_X / 2);
-                    break;
-                case AXIS.Y:
-                    StartIncAbs(AXIS.Y, position + RANGE_Y / 2);
-                    break;
-                case AXIS.Z:
-                    StartIncAbs(AXIS.Z, -position + RANGE_Z / 2);
-                    break;
-            }
-        }
+            double currentX = currentPositions[0];
+            double currentY = currentPositions[1];
+            double currentZ = currentPositions[2];
 
-        public void StartAbsAllFromCenter(double x, double y, double z)
-        {
-            StartIncAbsAll(x + RANGE_X / 2, y + RANGE_Y / 2, -z + RANGE_Z / 2);
+            double deltaX = XTarget - currentX;
+            double deltaY = YTarget - currentY;
+            double deltaZ = ZTarget - currentZ;
+
+            DIRECTION xDir = (deltaX >= 0) ? DIRECTION.FORWARD : DIRECTION.REVERSE;
+            DIRECTION yDir = (deltaY >= 0) ? DIRECTION.FORWARD : DIRECTION.REVERSE;
+            DIRECTION zDir = (deltaZ >= 0) ? DIRECTION.REVERSE : DIRECTION.FORWARD;
+
+            double xUm = Math.Abs(deltaX);
+            double yUm = Math.Abs(deltaY);
+            double zUm = Math.Abs(deltaZ);
+
+            /// Calculate the vector distance (Euclidean distance) for the movement.
+            double distance = Math.Sqrt(xUm * xUm + yUm * yUm + zUm * zUm);
+
+            /// Calculate the duration based on the vector distance and the desired speed.
+            /// Avoid division by zero if speed is not positive.
+            double duration = (speed > 0) ? distance / speed : 0;
+
+            AdjustSpeeds(xUm, yUm, zUm, duration);
+            StartIncAll(xDir, xUm, yDir, yUm, zDir, zUm);
         }
 
         /// Relative step movement from the current position of the axes. Origin is the center of the stoke.
-        public async Task StartAbsAllFromCenterAsync(double x, double y, double z)
+        public async Task StartAbsAllFromCenterAsync(double x, double y, double z, double speed)
         {
-
-            StartIncAbsAll(x + RANGE_X / 2, y + RANGE_Y / 2, -z + RANGE_Z / 2);
+            StartAbsAll(x + RANGE_X / 2, y + RANGE_Y / 2, -z + RANGE_Z / 2, speed);
 
             await Wait();
-        }
-
-        /// <summary>
-        /// Moves the X, Y, and Z axes by the specified number of pulses (incremental) with buffer. Positive values move forward, negative values move backward.
-        /// </summary>
-        public uint StartIncBufferEnc(int xPulse, int yPulse, int zPulse)
-        {
-            if (!this.IsValid)
-                return Hpmcstd.MCSD_ERROR_NO_DEVICE;
-
-            try
-            {
-                /// Calculate the number of movement commands to be issued based on non-zero pulse values.
-                int commandCount = (xPulse != 0 ? 1 : 0) + (yPulse != 0 ? 1 : 0) + (zPulse != 0 ? 1 : 0);
-
-                if (commandCount == 0)
-                    return Hpmcstd.MCSD_ERROR_SUCCESS;
-
-                /// Start buffering movement commands.
-                Hpmcstd.McsdStartBuffer(hController, (ushort)commandCount);
-
-                /// X axis movement command
-                if (xPulse != 0)
-                {
-                    ushort cmd = xPulse > 0 ? (ushort)Hpmcstd.MCSD_PLUS_INDEX_PULSE_DRIVE
-                                           : (ushort)Hpmcstd.MCSD_MINUS_INDEX_PULSE_DRIVE;
-                    Hpmcstd.McsdDataWrite(hController, MC104_AXIS2, cmd, (uint)Math.Abs(xPulse));
-                }
-
-                /// Y axis movement command
-                if (yPulse != 0)
-                {
-                    ushort cmd = yPulse > 0 ? (ushort)Hpmcstd.MCSD_PLUS_INDEX_PULSE_DRIVE
-                                           : (ushort)Hpmcstd.MCSD_MINUS_INDEX_PULSE_DRIVE;
-                    Hpmcstd.McsdDataWrite(hController, MC104_AXIS1, cmd, (uint)Math.Abs(yPulse));
-                }
-
-                /// Z axis movement command
-                if (zPulse != 0)
-                {
-                    ushort cmd = zPulse > 0 ? (ushort)Hpmcstd.MCSD_MINUS_INDEX_PULSE_DRIVE
-                                           : (ushort)Hpmcstd.MCSD_PLUS_INDEX_PULSE_DRIVE;
-                    Hpmcstd.McsdDataWrite(hController, MC104_AXIS3, cmd, (uint)Math.Abs(zPulse));
-                }
-
-                /// Execute the buffered movement commands.
-                return Hpmcstd.McsdEndBuffer(hController);
-            }
-            catch
-            {
-                return Hpmcstd.MCSD_ERROR_SYSTEM;
-            }
-        }
-
-        /// <summary>
-        /// Moves simultaneously the X, Y, and Z axes by the specified number of micrometers (incremental) with buffer.
-        /// </summary>
-        public uint StartIncBuffer(double xUm, double yUm, double zUm)
-        {
-            /// Convert micrometer values to pulse values for each axis.
-            int xPulse = Um2enc(AXIS.X, xUm);
-            int yPulse = Um2enc(AXIS.Y, yUm);
-            int zPulse = Um2enc(AXIS.Z, zUm);
-
-            /// Call the StartIncBufferEnc method with the calculated pulse values.
-            return StartIncBufferEnc(xPulse, yPulse, zPulse);
-        }
-
-        /// <summary>
-        /// Moves simultaneously the X, Y, and Z axes by the specified number of micrometers (incremental) with buffer and waits for the movement to complete.
-        /// </summary>
-        public async Task StartIncBufferAsync(double xUm, double yUm, double zUm)
-        {
-            StartIncBuffer(xUm, yUm, zUm);
-            await Wait(); // Wait for the movement to complete
         }
 
         public uint IndexOverride(AXIS axis, uint newTargetPulse)
@@ -1041,6 +1000,7 @@ namespace MicrosupportController
         /// engaged in an operation. The result is based on the status flags for the controller.</remarks>
         /// <param name="axis">The axis to check. Must be one of the defined <see cref="AXIS"/> values.</param>
         /// <returns><see langword="true"/> if the specified axis is busy; otherwise, <see langword="false"/>.</returns>
+
         public bool IsBusy(AXIS axis)
         {
             ushort status;
