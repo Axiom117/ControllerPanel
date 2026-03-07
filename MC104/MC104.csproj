@@ -156,9 +156,6 @@
     <Compile Include="src\server\ControllerServer.cs" />
     <Compile Include="ServerTestPanel.cs" />
     <Compile Include="src\server\MockMatlabServer.cs" />
-    <Compile Include="test\BufferTest.cs" />
-    <Compile Include="test\IndexOverrideTest.cs" />
-    <Compile Include="test\CPTest.cs" />
     <None Include="data\Trajectory_10_points_basic.csv" />
     <None Include="data\Trajectory_10_points_MC2.csv">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -226,7 +223,9 @@
       <Install>false</Install>
     </BootstrapperPackage>
   </ItemGroup>
-  <ItemGroup />
+  <ItemGroup>
+    <Folder Include="test\" />
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

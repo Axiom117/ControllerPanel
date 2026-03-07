@@ -902,13 +902,13 @@ namespace MC104
             {
                 LogMessage($"Starting Path Tracking in CP (Continuous Path) mode at segment duration = {DURATION} s...");
                 /// Start path tracking on the selected controllers in parallel CP mode.
-                _ = controllerServer.PathTrackingCP_Parallel(selectedControllers, DURATION);
+                _ = controllerServer.PathTrackingCP_Parallel(selectedControllers, DURATION, null);
             }
             else if (ptpModeButton.Checked)
             {
                 LogMessage($"Starting Path Tracking in CP (Continuous Path) mode at segment duration =  {DURATION} s...");
                 /// Start path tracking on the selected controllers in parallel PTP mode.
-                _ = controllerServer.PathTracking_Parallel(selectedControllers, DURATION);
+                _ = controllerServer.PathTrackingPTP_Parallel(selectedControllers, DURATION, null);
             }
             else
             {

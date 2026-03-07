@@ -1,6 +1,5 @@
 ﻿using MicrosupportController;
 using System;
-using SmoothTrajectoryTest;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
@@ -33,7 +32,7 @@ namespace MC104.server
         /// Configuration
         private readonly int localServerPort = 5000;
         private const double SPEED_DEFAULT = 1000.0; // Default speed for movements
-        private const double OVERRIDE_PROGRESS_PERCENT = 0.85; // 85%
+        private const double OVERRIDE_PROGRESS_PERCENT = 0.80; // 80%
         private const double DURATION = 0.2; // 200 ms
 
         /// Active client connections
@@ -359,6 +358,7 @@ namespace MC104.server
                         if (parts.Length < 3)
                             return "ERROR, 101, Invalid parameters for START_PATH_CP\n";
 
+                        /// Retrieve duration value into cpDuration
                         if (!double.TryParse(parts[1], out double cpDuration))
                             return "ERROR, 101, Invalid duration parameter for START_PATH_CP\n";
 
@@ -819,7 +819,7 @@ namespace MC104.server
                 return false;
             }
 
-            const int marginMs = 10;
+            const int marginMs = 30;
             int delayMs = (int)(waitDurationMs - marginMs);
             if (delayMs > 0)
             {

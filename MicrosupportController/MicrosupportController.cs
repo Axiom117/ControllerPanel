@@ -854,7 +854,7 @@ namespace MicrosupportController
         }
 
         /// <summary>
-        /// Moves the X, Y, and Z axes to the specified absolute positions.
+        /// Moves the X, Y, and Z axes to the specified absolute positions. Speed value is needed to calculate the duration for synchronized movement.
         /// </summary>
         public void StartAbsAll(double XTarget, double YTarget, double ZTarget, double speed)
         {
