@@ -159,6 +159,7 @@
     <None Include="data\Trajectory_10_points_MC2.csv">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Include="PROJECT_GUIDE.md" />
     <None Include="Resources\PTP_mode_icon.png" />
     <None Include="Resources\CP_mode_icon.png" />
     <EmbeddedResource Include="ControllerPanel.resx">
@@ -202,7 +203,6 @@
       <DependentUpon>Settings.settings</DependentUpon>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
     </Compile>
-    <None Include="README.md" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MicrosupportController\MicrosupportController.csproj">

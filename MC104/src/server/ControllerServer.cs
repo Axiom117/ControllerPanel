@@ -1,16 +1,18 @@
 ﻿using MicrosupportController;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Numerics;
+using System.Security.Claims;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.Linq;
-using System.Numerics;
-using System.IO;
-using System.Diagnostics;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement.TaskbarClock;
 
 namespace MC104.server
 {
@@ -660,7 +662,7 @@ namespace MC104.server
                     return $"ERROR, 104, Not enough points for CP trajectory for {id}.\n";
                 }
 
-                /// Move to the first point of the trajectory before starting CP motion.
+                /// Move to the first point before starting CP motion.
                 var startPoint = trajectoryPoints[0];
                 NotifyClientConnection($"[Controller {id}] Moving to start point ({startPoint.X:F1}, {startPoint.Y:F1}, {startPoint.Z:F1})...");
                 await controller.StartAbsAllFromCenterAsync(startPoint.X, startPoint.Y, startPoint.Z, SPEED_DEFAULT);
@@ -668,10 +670,16 @@ namespace MC104.server
                 /// 'chainStartPoint' acts as the reference origin for the current continuous move chain.
                 TrajectoryPoint chainStartPoint = trajectoryPoints[0];
 
-                /// Start the initial segment (P0 -> P1).
-                NotifyClientConnection($"[Controller {id}] Starting initial segment (Point 0 -> Point 1)...");
+                /// initialize the absolute time base for this chain.
+                Stopwatch chainTimer = Stopwatch.StartNew();
 
+                /// Start the initial segment (P0 -> P1)
+                NotifyClientConnection($"[Controller {id}] Starting initial segment (Point 0 -> Point 1)...");
                 await StartSegmentSync(controller, trajectoryPoints[0], trajectoryPoints[1], duration);
+
+                /// P0 -> P1 is segment index 0 within the current continuous chain.
+                int chainSegmentIndex = 0;
+                double segmentDurationMs = duration * 1000.0;
 
                 /// Iterate through subsequent segments.
                 for (int i = 1; i < trajectoryPoints.Count - 1; i++)
@@ -684,21 +692,48 @@ namespace MC104.server
 
                     if (isContinuous)
                     {
-                        bool overrideSuccess = await WaitForOverrideWindowAndExecute_ByTime(id, controller, currentTarget, nextTarget, chainStartPoint, duration);
+                        bool overrideSuccess = await WaitForOverrideWindowAndExecute_ByTime(
+                            id,
+                            controller,
+                            currentTarget,
+                            nextTarget,
+                            chainStartPoint,
+                            duration,
+                            chainTimer,
+                            chainSegmentIndex);
+
                         if (!overrideSuccess)
                         {
-                            NotifyClientConnection($"[Controller {id}] WARNING: Missed override window at Point {i} for {id}. Resyncing...");
+                            NotifyClientConnection($"[Controller {id}] WARNING: Missed override window at Point {i}. Resyncing...");
                             await controller.Wait();
+
+                            /// Start a new chain from the current point.
                             chainStartPoint = currentTarget;
+                            NotifyClientConnection($"[Controller {id}] Restarting chain from Point {currentTarget.Index} to Point {nextTarget.Index}...");
+                            chainTimer = Stopwatch.StartNew();
                             await StartSegmentSync(controller, currentTarget, nextTarget, duration);
+                            chainSegmentIndex = 0;
+                            continue;
                         }
+
+                        /// Keep the point loading aligned to the full segment duration.
+                        double segmentEndDeadlineMs = (chainSegmentIndex + 1) * segmentDurationMs;
+                        await WaitUntilElapsedAsync(chainTimer, segmentEndDeadlineMs);
+
+                        chainSegmentIndex++;
+                        NotifyClientConnection($"[Controller {id}] Segment boundary reached at {chainTimer.Elapsed.TotalMilliseconds:F1}ms.");
                     }
                     else
                     {
                         NotifyClientConnection($"[Controller {id}] Segment {i}->{i + 1}: Discontinuous. Stopping at Point {i}.");
                         await controller.Wait();
+
+                        /// Start a new chain from the discontinuity point.
                         chainStartPoint = currentTarget;
+                        NotifyClientConnection($"[Controller {id}] Starting new chain from Point {currentTarget.Index} to Point {nextTarget.Index}...");
+                        chainTimer = Stopwatch.StartNew();
                         await StartSegmentSync(controller, currentTarget, nextTarget, duration);
+                        chainSegmentIndex = 0;
                     }
                 }
 
@@ -708,7 +743,7 @@ namespace MC104.server
                 double[] finalPos = controller.GetPositionsFromCenter();
                 NotifyClientConnection($"[Controller {id}] Motion Complete. Final Pos: ({finalPos[0]:F1}, {finalPos[1]:F1}, {finalPos[2]:F1}).");
 
-                isPathReady[id] = false; // Path consumed
+                isPathReady[id] = false;
                 return $"PATH_COMPLETED, {id}\n";
             }
             catch (Exception ex)
@@ -802,32 +837,59 @@ namespace MC104.server
         }
 
         /// <summary>
-        /// Waits for a calculated time window and then executes the IndexOverride using a time-based approach.
+        /// Asynchronously waits until the specified elapsed time has passed on the provided stopwatch.
         /// </summary>
-        private async Task<bool> WaitForOverrideWindowAndExecute_ByTime(string id, Microsupport controller, TrajectoryPoint currentTarget, TrajectoryPoint nextTarget, TrajectoryPoint chainStart, double duration)
+        private async Task WaitUntilElapsedAsync(Stopwatch timer, double targetElapsedMs)
         {
-            double segmentDurationMs = duration * 1000;
-            if (segmentDurationMs <= 0) return false;
+            if (timer == null)
+                throw new ArgumentNullException(nameof(timer));
 
-            Stopwatch segmentTimer = Stopwatch.StartNew();
-            double waitDurationMs = segmentDurationMs * OVERRIDE_PROGRESS_PERCENT;
+            const double spinThresholdMs = 5.0;
+
+            while (timer.Elapsed.TotalMilliseconds < targetElapsedMs)
+            {
+                double remainingMs = targetElapsedMs - timer.Elapsed.TotalMilliseconds;
+
+                if (remainingMs > spinThresholdMs)
+                {
+                    await Task.Delay((int)(remainingMs - spinThresholdMs));
+                }
+                else
+                {
+                    Thread.SpinWait(100);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Waits for the absolute override deadline of the current segment and then executes the IndexOverride.
+        /// </summary>
+        private async Task<bool> WaitForOverrideWindowAndExecute_ByTime(string id, Microsupport controller, TrajectoryPoint currentTarget, TrajectoryPoint nextTarget, TrajectoryPoint chainStart, double duration, Stopwatch chainTimer, int chainSegmentIndex)
+        {
+            double segmentDurationMs = duration * 1000.0;
+            if (segmentDurationMs <= 0)
+                return false;
+
+            if (chainTimer == null)
+                throw new ArgumentNullException(nameof(chainTimer));
+
+            /// Calculate the absolute time (in ms) when the override should be executed for this segment.
+            double overrideDeadlineMs = (chainSegmentIndex * segmentDurationMs) + (segmentDurationMs * OVERRIDE_PROGRESS_PERCENT);
+            double segmentEndDeadlineMs = (chainSegmentIndex + 1) * segmentDurationMs;
 
             if (!controller.IsBusy())
             {
-                NotifyClientConnection($"[Controller {id}] Error: Controller is not busy at the start of time-based wait. Aborting override.");
+                NotifyClientConnection($"[Controller {id}] Error: Controller is not busy before override wait. Aborting override.");
                 return false;
             }
 
-            const int marginMs = 10;
-            int delayMs = (int)(waitDurationMs - marginMs);
-            if (delayMs > 0)
-            {
-                await Task.Delay(delayMs);
-            }
+            await WaitUntilElapsedAsync(chainTimer, overrideDeadlineMs);
 
-            while (segmentTimer.Elapsed.TotalMilliseconds < waitDurationMs)
+            double actualElapsedMs = chainTimer.Elapsed.TotalMilliseconds;
+            if (actualElapsedMs >= segmentEndDeadlineMs)
             {
-                Thread.SpinWait(1);
+                NotifyClientConnection($"[Controller {id}] WARNING: Override deadline was reached too late at {actualElapsedMs:F1}ms. Segment end deadline was {segmentEndDeadlineMs:F1}ms.");
+                return false;
             }
 
             if (!controller.IsBusy())
@@ -836,7 +898,9 @@ namespace MC104.server
                 return false;
             }
 
-            NotifyClientConnection($"[Controller {id}] Override window reached at {segmentTimer.Elapsed.TotalMilliseconds:F1}ms. Executing Override to Point {nextTarget.Index} ({nextTarget.X:F1}, {nextTarget.Y:F1}, {nextTarget.Z:F1})");
+            NotifyClientConnection($"[Controller {id}] Override window reached at {actualElapsedMs:F1}ms. Executing Override to Point {nextTarget.Index} ({nextTarget.X:F1}, {nextTarget.Y:F1}, {nextTarget.Z:F1})");
+
+            Stopwatch overrideTimer = Stopwatch.StartNew();
 
             double totalDistX = Math.Abs(nextTarget.X - chainStart.X);
             double totalDistY = Math.Abs(nextTarget.Y - chainStart.Y);
@@ -850,11 +914,15 @@ namespace MC104.server
             double next_dy = nextTarget.Y - currentTarget.Y;
             double next_dz = nextTarget.Z - currentTarget.Z;
 
-            controller.AdjustSpeeds(next_dx, next_dy, next_dz, duration);
+            /// Use absolute distances for synchronized speed adjustment.
+            controller.AdjustSpeeds(Math.Abs(next_dx), Math.Abs(next_dy), Math.Abs(next_dz), duration);
 
             if (Math.Abs(next_dx) > 0.001) controller.IndexOverride(Microsupport.AXIS.X, pulseX);
             if (Math.Abs(next_dy) > 0.001) controller.IndexOverride(Microsupport.AXIS.Y, pulseY);
             if (Math.Abs(next_dz) > 0.001) controller.IndexOverride(Microsupport.AXIS.Z, pulseZ);
+
+            overrideTimer.Stop();
+            NotifyClientConnection($"[Controller {id}] Override command block completed in {overrideTimer.Elapsed.TotalMilliseconds:F1}ms.");
 
             return true;
         }
@@ -862,7 +930,7 @@ namespace MC104.server
 
         #endregion
 
-        #region Server Helper Methods
+            #region Server Helper Methods
         private void NotifyClientConnection(string message)
         {
             string timestampedMessage = $"[{DateTime.Now:HH:mm:ss}] {message}";
