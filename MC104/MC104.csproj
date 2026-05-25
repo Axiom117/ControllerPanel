@@ -154,7 +154,6 @@
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="src\server\ControllerServer.cs" />
-    <Compile Include="ServerTestPanel.cs" />
     <Compile Include="test\BufferTest.cs" />
     <Compile Include="test\IndexOverrideTest.cs" />
     <Compile Include="test\CPTest.cs" />
