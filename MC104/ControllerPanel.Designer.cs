@@ -37,7 +37,6 @@ namespace MC104
             this.toolStrip1 = new System.Windows.Forms.ToolStrip();
             this.toolStripLabel1 = new System.Windows.Forms.ToolStripLabel();
             this.timer1 = new System.Windows.Forms.Timer(this.components);
-            this.timer2 = new System.Windows.Forms.Timer(this.components);
             this.Status = new System.Windows.Forms.GroupBox();
             this.button3 = new System.Windows.Forms.Button();
             this.button2 = new System.Windows.Forms.Button();
@@ -109,6 +108,8 @@ namespace MC104
             this.pathDataListBox = new System.Windows.Forms.ListBox();
             this.saveLogButton = new System.Windows.Forms.Button();
             this.stopServerButton = new System.Windows.Forms.Button();
+            this.menuStrip1 = new System.Windows.Forms.MenuStrip();
+            this.keyboardMappingToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStrip1.SuspendLayout();
             this.Status.SuspendLayout();
             this.groupBox2.SuspendLayout();
@@ -131,6 +132,7 @@ namespace MC104
             this.groupBox4.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
+            this.menuStrip1.SuspendLayout();
             this.SuspendLayout();
             // 
             // toolStrip1
@@ -139,7 +141,7 @@ namespace MC104
             this.toolStrip1.ImageScalingSize = new System.Drawing.Size(24, 24);
             this.toolStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.toolStripLabel1});
-            this.toolStrip1.Location = new System.Drawing.Point(0, 528);
+            this.toolStrip1.Location = new System.Drawing.Point(0, 551);
             this.toolStrip1.Name = "toolStrip1";
             this.toolStrip1.Size = new System.Drawing.Size(1482, 25);
             this.toolStrip1.TabIndex = 1;
@@ -514,10 +516,10 @@ namespace MC104
             this.panel_left.Controls.Add(this.Devices);
             this.panel_left.Controls.Add(this.Status);
             this.panel_left.Dock = System.Windows.Forms.DockStyle.Left;
-            this.panel_left.Location = new System.Drawing.Point(0, 0);
+            this.panel_left.Location = new System.Drawing.Point(0, 25);
             this.panel_left.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
             this.panel_left.Name = "panel_left";
-            this.panel_left.Size = new System.Drawing.Size(440, 528);
+            this.panel_left.Size = new System.Drawing.Size(440, 526);
             this.panel_left.TabIndex = 0;
             // 
             // Devices
@@ -531,7 +533,7 @@ namespace MC104
             this.Devices.Font = new System.Drawing.Font("Microsoft Sans Serif", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.Devices.Location = new System.Drawing.Point(0, 279);
             this.Devices.Name = "Devices";
-            this.Devices.Size = new System.Drawing.Size(440, 249);
+            this.Devices.Size = new System.Drawing.Size(440, 247);
             this.Devices.TabIndex = 58;
             this.Devices.TabStop = false;
             this.Devices.Text = "Devices";
@@ -584,10 +586,10 @@ namespace MC104
             // 
             this.panel_right.Controls.Add(this.controlPanel);
             this.panel_right.Dock = System.Windows.Forms.DockStyle.Left;
-            this.panel_right.Location = new System.Drawing.Point(440, 0);
+            this.panel_right.Location = new System.Drawing.Point(440, 25);
             this.panel_right.Margin = new System.Windows.Forms.Padding(2);
             this.panel_right.Name = "panel_right";
-            this.panel_right.Size = new System.Drawing.Size(476, 528);
+            this.panel_right.Size = new System.Drawing.Size(476, 526);
             this.panel_right.TabIndex = 60;
             // 
             // controlPanel
@@ -606,7 +608,7 @@ namespace MC104
             this.controlPanel.Font = new System.Drawing.Font("Microsoft Sans Serif", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.controlPanel.Location = new System.Drawing.Point(0, 0);
             this.controlPanel.Name = "controlPanel";
-            this.controlPanel.Size = new System.Drawing.Size(476, 528);
+            this.controlPanel.Size = new System.Drawing.Size(476, 526);
             this.controlPanel.TabIndex = 74;
             this.controlPanel.TabStop = false;
             this.controlPanel.Text = "Control Panel";
@@ -878,9 +880,9 @@ namespace MC104
             // 
             this.panel1.Controls.Add(this.commStatus);
             this.panel1.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.panel1.Location = new System.Drawing.Point(916, 0);
+            this.panel1.Location = new System.Drawing.Point(916, 25);
             this.panel1.Name = "panel1";
-            this.panel1.Size = new System.Drawing.Size(566, 528);
+            this.panel1.Size = new System.Drawing.Size(566, 526);
             this.panel1.TabIndex = 61;
             // 
             // commStatus
@@ -895,7 +897,7 @@ namespace MC104
             this.commStatus.Font = new System.Drawing.Font("Microsoft Sans Serif", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.commStatus.Location = new System.Drawing.Point(0, 0);
             this.commStatus.Name = "commStatus";
-            this.commStatus.Size = new System.Drawing.Size(566, 528);
+            this.commStatus.Size = new System.Drawing.Size(566, 526);
             this.commStatus.TabIndex = 82;
             this.commStatus.TabStop = false;
             this.commStatus.Text = "Comm Status";
@@ -1041,21 +1043,39 @@ namespace MC104
             this.stopServerButton.UseVisualStyleBackColor = true;
             this.stopServerButton.Click += new System.EventHandler(this.StopServerButton_Click);
             // 
+            // menuStrip1
+            // 
+            this.menuStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.keyboardMappingToolStripMenuItem});
+            this.menuStrip1.Location = new System.Drawing.Point(0, 0);
+            this.menuStrip1.Name = "menuStrip1";
+            this.menuStrip1.Size = new System.Drawing.Size(1482, 25);
+            this.menuStrip1.TabIndex = 62;
+            this.menuStrip1.Text = "menuStrip1";
+            // 
+            // keyboardMappingToolStripMenuItem
+            // 
+            this.keyboardMappingToolStripMenuItem.Name = "keyboardMappingToolStripMenuItem";
+            this.keyboardMappingToolStripMenuItem.Size = new System.Drawing.Size(134, 21);
+            this.keyboardMappingToolStripMenuItem.Text = "Keyboard Mapping";
+            this.keyboardMappingToolStripMenuItem.Click += new System.EventHandler(this.keyboardMappingToolStripMenuItem_Click);
+            // 
             // ControllerPanel
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.AutoSize = true;
             this.BackColor = System.Drawing.SystemColors.Window;
-            this.ClientSize = new System.Drawing.Size(1482, 553);
+            this.ClientSize = new System.Drawing.Size(1482, 576);
             this.Controls.Add(this.panel1);
             this.Controls.Add(this.panel_right);
             this.Controls.Add(this.panel_left);
             this.Controls.Add(this.toolStrip1);
+            this.Controls.Add(this.menuStrip1);
             this.Font = new System.Drawing.Font("Arial", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Margin = new System.Windows.Forms.Padding(3, 2, 3, 2);
-            this.MaximumSize = new System.Drawing.Size(1500, 600);
+            this.MaximumSize = new System.Drawing.Size(1500, 615);
             this.Name = "ControllerPanel";
             this.Text = "  Microsupport Quick Pro Controller Panel (Developed in Arai Biorobotics Lab)";
             this.Load += new System.EventHandler(this.Form2_Load);
@@ -1088,6 +1108,8 @@ namespace MC104
             this.groupBox4.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).EndInit();
+            this.menuStrip1.ResumeLayout(false);
+            this.menuStrip1.PerformLayout();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -1096,7 +1118,6 @@ namespace MC104
         private System.Windows.Forms.ToolStrip toolStrip1;
         private System.Windows.Forms.ToolStripLabel toolStripLabel1;
         private System.Windows.Forms.Timer timer1;
-        private System.Windows.Forms.Timer timer2;
         private System.Windows.Forms.GroupBox Status;
         private System.Windows.Forms.Panel panel_right;
         private System.Windows.Forms.Panel panel_left;
@@ -1184,5 +1205,7 @@ namespace MC104
         private RadioButton ptpModeButton;
         private PictureBox pictureBox1;
         private PictureBox pictureBox2;
+        private MenuStrip menuStrip1;
+        private ToolStripMenuItem keyboardMappingToolStripMenuItem;
     }
 }

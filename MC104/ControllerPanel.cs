@@ -49,6 +49,12 @@ namespace MC104
         /// The controllerServer object to manage the controller server operations.
         private ControllerServer controllerServer;
 
+        /// keyboardMappingConfig stores the keyboard bindings loaded from configuration.
+        private KeyboardMappingConfig keyboardMappingConfig = null;
+
+        /// Tracks which action keys are currently held down to avoid repeated firing.
+        private readonly HashSet<Keys> heldKeys = new HashSet<Keys>();
+
         /// Range of movement for each axis in micrometers (um).
         private const double RANGE_X = 20000; // Motion range of X axis (um)
         private const double RANGE_Y = 20000; // Motion range of Y axis (um)
@@ -67,6 +73,9 @@ namespace MC104
 
             /// Load the controller mapping from a JSON file.
             LoadControllerMapping(ref controllerMapping);
+
+            /// Load the keyboard mapping from a JSON file.
+            LoadKeyboardMapping();
         }
 
         #endregion
@@ -75,6 +84,11 @@ namespace MC104
 
         private void Form2_Load(object sender, EventArgs e)
         {
+            /// Enable form-level key preview so keyboard events fire before child controls.
+            this.KeyPreview = true;
+            this.KeyDown += Form_KeyDown;
+            this.KeyUp += Form_KeyUp;
+
             /// Populate the path data list box on startup
             RefreshPathDataList();
 
@@ -290,6 +304,73 @@ namespace MC104
                 {
                     selectedControllers.Add(controllerId);
                     clickedIcon.BackColor = Color.LightBlue;
+                }
+            }
+        }
+
+        private void keyboardMappingToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            using (var form = new KeyboardMappingForm(keyboardMappingConfig?.Bindings))
+            {
+                form.ShowDialog(this);
+            }
+        }
+
+        private Button GetButtonForAction(string action)
+        {
+            switch (action)
+            {
+                case "PlusX": return plusX;
+                case "MinusX": return minusX;
+                case "PlusY": return plusY;
+                case "MinusY": return minusY;
+                case "PlusZ": return plusZ;
+                case "MinusZ": return minusZ;
+                default: return null;
+            }
+        }
+
+        private void Form_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (keyboardMappingConfig == null) return;
+            foreach (var binding in keyboardMappingConfig.Bindings)
+            {
+                if (Enum.TryParse(binding.Key, true, out Keys mappedKey) && e.KeyCode == mappedKey)
+                {
+                    /// Always suppress the key so it is never forwarded to child controls (e.g. stepDistance TextBox).
+                    e.SuppressKeyPress = true;
+                    e.Handled = true;
+
+                    /// heldKeys guards against OS key-repeat: only fire once per physical press.
+                    if (heldKeys.Contains(mappedKey)) return;
+                    heldKeys.Add(mappedKey);
+
+                    Button btn = GetButtonForAction(binding.Action);
+                    if (btn != null)
+                    {
+                        buttons_MouseDown(btn, new MouseEventArgs(MouseButtons.Left, 1, 0, 0, 0));
+                    }
+                    return;
+                }
+            }
+        }
+
+        private void Form_KeyUp(object sender, KeyEventArgs e)
+        {
+            if (keyboardMappingConfig == null) return;
+            foreach (var binding in keyboardMappingConfig.Bindings)
+            {
+                if (Enum.TryParse(binding.Key, true, out Keys mappedKey) && e.KeyCode == mappedKey)
+                {
+                    e.SuppressKeyPress = true;
+                    e.Handled = true;
+                    heldKeys.Remove(mappedKey);
+                    Button btn = GetButtonForAction(binding.Action);
+                    if (btn != null)
+                    {
+                        buttons_MouseUp(btn, new MouseEventArgs(MouseButtons.Left, 1, 0, 0, 0));
+                    }
+                    return;
                 }
             }
         }
@@ -703,6 +784,20 @@ namespace MC104
                 /// If an error occurs while loading the configuration file, show an error message and exit the application.
                 MessageBox.Show($"Failed to load configuration file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 Application.Exit();
+            }
+        }
+
+        private void LoadKeyboardMapping()
+        {
+            var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Configs", "keyboard_mapping.json");
+            try
+            {
+                keyboardMappingConfig = KeyboardMappingConfig.Load(path);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to load keyboard mapping: {ex.Message}", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                keyboardMappingConfig = new KeyboardMappingConfig();
             }
         }
 

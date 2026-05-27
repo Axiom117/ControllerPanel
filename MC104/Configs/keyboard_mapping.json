@@ -1,0 +1,28 @@
+{
+  "bindings": [
+    {
+      "action": "PlusX",
+      "key": "S"
+    },
+    {
+      "action": "MinusX",
+      "key": "W"
+    },
+    {
+      "action": "PlusY",
+      "key": "D"
+    },
+    {
+      "action": "MinusY",
+      "key": "A"
+    },
+    {
+      "action": "PlusZ",
+      "key": "E"
+    },
+    {
+      "action": "MinusZ",
+      "key": "Q"
+    }
+  ]
+}
